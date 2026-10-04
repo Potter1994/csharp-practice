@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "day1 Basics",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build day1 Basics",
+      "program": "${workspaceFolder}/day1/Basics/bin/Debug/net10.0/Basics.dll",
+      "cwd": "${workspaceFolder}/day1/Basics",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "day2 Library",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build day2 Library",
+      "program": "${workspaceFolder}/day2/Library/bin/Debug/net10.0/Library.dll",
+      "cwd": "${workspaceFolder}/day2/Library",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "day3 MemoryLab",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build day3 MemoryLab",
+      "program": "${workspaceFolder}/day3/MemoryLab/bin/Debug/net10.0/MemoryLab.dll",
+      "cwd": "${workspaceFolder}/day3/MemoryLab",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "day4 AsyncLab",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build day4 AsyncLab",
+      "program": "${workspaceFolder}/day4/AsyncLab/bin/Debug/net10.0/AsyncLab.dll",
+      "cwd": "${workspaceFolder}/day4/AsyncLab",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "day5 LinqLab",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build day5 LinqLab",
+      "program": "${workspaceFolder}/day5/LinqLab/bin/Debug/net10.0/LinqLab.dll",
+      "cwd": "${workspaceFolder}/day5/LinqLab",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}
