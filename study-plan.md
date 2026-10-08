@@ -20,11 +20,11 @@
 - [x] **Day 4** 電腦原理:作業系統、Process/Thread — race condition 與 `lock`、`Task`/`async`、`WhenAll` 並行查詢(2026-09-22 完成)
 - [x] **Day 5** C#:LINQ、集合、Generics — 集合效能實測、LINQ 運算子、延遲執行、泛型約束、重構 Library(2026-09-30 完成)
 - [x] **Day 6** 電腦原理:網路基礎(TCP/IP、HTTP) — 用 HttpClient 打公開 API(2026-10-05 完成)
-- [ ] **Day 7** 【複習/補進度】整理筆記,程式碼推上 GitHub
+- [x] **Day 7** 【複習/補進度】整理筆記,程式碼推上 GitHub(2026-10-05 完成)
 
 ## 階段二:後端架構設計(C# / ASP.NET Core)
 
-- [ ] **Day 8** ASP.NET Core 基礎、Minimal API — 建一個 Todo API(CRUD)
+- [x] **Day 8** ASP.NET Core 基礎、Minimal API — 建一個 Todo API(CRUD)(2026-10-08 完成)
 - [ ] **Day 9** 分層架構(Controller/Service/Repository) — 重構 Todo API
 - [ ] **Day 10** 資料庫:EF Core + PostgreSQL — 接資料庫取代記憶體儲存
 - [ ] **Day 11** API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
@@ -253,7 +253,7 @@
 
 ---
 
-### Day 6:電腦原理 — 網路基礎(TCP/IP、HTTP)+ HttpClient
+### Day 6 ✅:電腦原理 — 網路基礎(TCP/IP、HTTP)+ HttpClient
 
 **練習 1:概念暖身(先寫筆記再寫 code)**
 用自己的話回答:
@@ -300,6 +300,73 @@
 - 用瀏覽器 DevTools 的 Network 面板打開同一個 API,對照 C# 收到的 header 和狀態碼。
 - 查一下 REST 的幾個原則,以及 `GET`/`POST`/`PUT`/`PATCH`/`DELETE` 的語意差異(冪等性)——這直接銜接 Day 11 的 API 設計。
 
+### Day 7 ✅:複習/補進度 — 整理筆記,程式碼推上 GitHub
+
+- 補上 day1、day2 的 `notes.md`(前六天只有 day3~day6 有筆記)。
+- 修正 day5、day6 筆記裡不精確的段落。
+- 建立 `.gitignore`(排除 `obj`/`bin`,2.6M)、`README.md`,推上 GitHub。
+
+### Day 8 ✅:ASP.NET Core 基礎、Minimal API — Todo API(CRUD)
+
+**環境設置**
+1. `cd day8`,執行 `dotnet new web -o TodoApi`(`web` 範本就是 Minimal API,不要用 `mvc` 或 `webapi`)。
+2. `dotnet run` 確認能啟動,記下它印出的 port。用瀏覽器或 `curl` 打一次根路徑確認有回應。
+
+**練習 1:概念暖身(先寫筆記再寫 code)**
+用自己的話回答:
+- `Program.cs` 裡 `WebApplication.CreateBuilder(args)` → `builder.Build()` → `app.Run()` 這三步各做了什麼?
+- 什麼是 **middleware pipeline**?為什麼 `app.UseXxx()` 的**順序**會影響行為?(提示:想像成一層層包起來的洋蔥,請求進去、回應出來)
+- 什麼是 **DI(依賴注入)容器**?為什麼不自己 `new` 就好?
+- `AddSingleton` / `AddScoped` / `AddTransient` 三種生命週期差在哪?各自適合什麼?
+- Minimal API 跟 Controller 寫法差在哪?各自適合什麼場景?
+- 對照 Day 6:你那時候是 HTTP **客戶端**,現在是**伺服器端**。同一個請求在兩邊分別經過什麼?
+
+**練習 2:第一個端點**
+- 把範本預設的 `app.MapGet("/", () => "Hello World!")` 讀懂,然後自己加:
+  - `GET /hello?name=xxx` — 從 query string 取值並回傳問候語
+  - `GET /hello/{name}` — 改從路由參數取值,比較兩者寫法
+- 用 `curl` 測試(不要只用瀏覽器,瀏覽器只能發 GET)。
+
+**練習 3:Todo CRUD(本日主線)**
+先定義 `record Todo(int Id, string Title, bool IsDone);`,資料先存在記憶體的 `List<Todo>`(資料庫留到 Day 10)。
+實作五個端點,**狀態碼要正確**:
+
+| 方法 | 路徑 | 成功回傳 | 失敗回傳 |
+|---|---|---|---|
+| `GET` | `/todos` | 200 + 陣列 | — |
+| `GET` | `/todos/{id}` | 200 + 單筆 | 404 |
+| `POST` | `/todos` | **201** + `Location` header | 400(標題空白) |
+| `PUT` | `/todos/{id}` | 204 No Content | 404 |
+| `DELETE` | `/todos/{id}` | 204 No Content | 404 |
+
+- 用 `Results.Ok()` / `Results.Created()` / `Results.NotFound()` / `Results.NoContent()` / `Results.BadRequest()`。
+- 對照 Day 6 寫的冪等性筆記:驗證 `PUT` 同一筆打兩次結果相同、`POST` 打兩次會建出兩筆。
+
+**練習 4:DI 與服務分離**
+- 把 `List<Todo>` 的操作抽成 `ITodoService` + `TodoService`,端點只負責接請求、回傳結果。
+- 用 `builder.Services.AddSingleton<ITodoService, TodoService>()` 註冊,端點用參數注入取得。
+- **實測三種生命週期的差別**:做一個 `IGuidService` 只回傳一個建構時產生的 `Guid`,分別註冊成 Singleton / Scoped / Transient,在同一個端點注入兩次並印出來,觀察:
+  - 同一個請求內兩個 Guid 是否相同?
+  - 不同請求之間是否相同?
+  - 記下結果,解釋為什麼。
+
+**練習 5(整合小專案):用 Day 6 的 HttpClient 測自己的 API**
+- 另開一個 console 專案(或沿用 `day6/HttpLab`),用 `HttpClient` 對自己的 Todo API 跑一輪完整流程:
+  `POST` 建立 → `GET` 確認 → `PUT` 更新 → `GET` 確認 → `DELETE` → `GET` 應得到 404。
+- 每一步印出狀態碼,驗證跟練習 3 的表格一致。
+- 這題同時複習 Day 6 的 `GetFromJsonAsync` / `PostAsJsonAsync` 與例外處理。
+
+**驗收標準**
+- 五個端點都能正確運作,狀態碼符合上表(用 curl 或練習 5 的 client 驗證)。
+- 能解釋 middleware 順序為什麼重要,舉一個順序寫反會出錯的例子。
+- 能說出 Singleton / Scoped / Transient 的差別,並用練習 4 的實測數字佐證。
+- 能解釋為什麼 `POST` 回傳 201 而不是 200,以及 `Location` header 的作用。
+
+**延伸**
+- 打開 OpenAPI(.NET 9+ 內建 `builder.Services.AddOpenApi()`),看看自動產生的 API 文件。
+- 查 `app.MapGroup("/todos")` 路由群組怎麼用,把五個端點收斂起來。
+- 想一下:現在所有邏輯都塞在 `Program.cs` 裡,如果有 50 個端點會怎樣?(這就是 Day 9 分層架構要解決的問題)
+
 ## 調整紀錄
 > 之後每次討論學習狀況時,在這裡加一筆日期 + 調整內容,方便回顧課表怎麼演變。
 
@@ -311,3 +378,6 @@
 - 2026-09-17:Day 3 完成(練習 1~5)。釐清「C# 與 JS 預設都是傳值,差別在值是地址還是資料」、`ref`/`out`/`in` 的別名語意、boxing 成本。練習 4 實測 100 萬個物件:struct 陣列 7 MB vs class 陣列 53 MB,其中 21 MB 是 GC 堆管理開銷(理論資料量僅 32 MB)。筆記在 `day3/MemoryLab/notes.md`。
 - 2026-09-22:Day 4 完成(練習 1~4 + 延伸)。Process/Thread 的記憶體分工、I/O bound vs CPU bound、race condition 與 `lock` 的原子性、`await` 等待期間零執行緒、`Task.Run` 與執行緒集區。實測:依序 await 3012 ms vs `Task.WhenAll` 1501 ms;100 個 `Task.Run` 只用 11 條執行緒。day4 專案透過 `<ProjectReference>` 引用 day2 的 `Library`。筆記在 `day4/AsyncLab/notes.md`。
 - 2026-09-30:Day 5 完成(練習 1~5 + 延伸)。集合實測 List O(n) vs HashSet O(1) 差約 7600 倍;LINQ 延遲執行(查詢 3 次 = 條件執行 21 次)、`ToList()` 的快照語意;泛型約束 `IComparable<T>`/`IEntity`/`new()`;`SimpleRepository<T>` 為第二週 Repository 層暖身;用 LINQ 重構 day2 的 `Library`。延伸釐清 `Expression<Func<>>` 是 `IQueryable` 能翻譯成 SQL 的關鍵。筆記在 `day5/LinqLab/notes.md`。
+- 2026-10-05:Day 6 完成(練習 1~5 + 延伸)。網路基礎:TCP/UDP 的取捨(UDP 不是「比較快」,而是延遲低 —— 不等重傳也不等按序交付)、三向交握真正的目的是交換初始序號 ISN、HTTP/1.1→2→3 的演進(持久連線 → 多工 + HPACK → QUIC 建在 UDP 上,繞過 TCP 寫死在作業系統裡的按序交付)。`HttpClient` 生命週期:連線池其實在底層的 `SocketsHttpHandler` 上而不是 `HttpClient` 本身,所以每次 `new` 都是一個新的空池子;而 static 單例又因為連線一直活著、從來沒有重新 DNS 解析的時機,解法是設 `PooledConnectionLifetime`(等同 `IHttpClientFactory` 的核心行為)。逾時丟的是 `TaskCanceledException` 而非 `TimeoutException`,要靠 `InnerException is TimeoutException` 才分得出「逾時」與「主動取消」。實測:依序抓 10 筆 1216 ms vs `Task.WhenAll` 363 ms;冷連線 WhenAll 641 ms,但暖身後去抓「從沒抓過的網址」只要 91 ms —— 證明差異來自 TCP/TLS 連線重用,不是內容快取。延伸對照 DevTools 發現 `HttpClient` 預設連一個 request header 都不送(瀏覽器會送十幾個),以及回應裡的 `Alt-Svc: h3`(伺服器支援 HTTP/3 但 .NET 預設不升級)、`ETag`、`cf-cache-status`。補上冪等性與 REST 原則:冪等性決定「請求失敗時能不能重試」,`GET`/`PUT`/`DELETE` 可以安心重試,`POST` 要靠 idempotency key。筆記在 `day6/HttpLab/notes.md`。
+- 2026-10-05:Day 7 完成(複習/整理筆記 + 推上 GitHub)。補上 day1、day2 的 `notes.md`(原本只有 day3~day6 有)。修正前幾天筆記的精確度:`FirstOrDefault` 對實值型別回傳 `default(T)` 而非 null、`ToList()` 是淺層複製(元素仍共用)、`Where().Where()` 不會被合併成 `Where(a && b)`(但延遲執行讓資料只走一遍,不像 JS 會產生中間陣列);day6 的「`HttpClient` 沒有連線池」更正為「連線池在底層的 `SocketsHttpHandler` 上,每次 `new` 都是新的空池子」,並補上冪等性與「逾時能不能重試」的關聯。釐清 `=>` 是 expression-bodied member 不是 lambda(Release 下 IL 與 `{ return ...; }` 完全相同)、local function 捕捉外部變數用 struct 閉包而 lambda 用 class。建立 `.gitignore`(排除 2.6M 的 obj/bin)與 `README.md`,推上 `Potter1994/csharp-practice`。
+- 2026-10-08:Day 8 完成(練習 1~5)。Minimal API 基礎:參數綁定的判斷順序(簡單型別看型別有沒有 `TryParse`、複雜型別落到 body、DI 服務從容器取)、`IResult` 的 `ExecuteAsync` 才是真正寫入回應的地方(自己實作一個 20 行的 `IResult` 行為與 `Results.Ok` 完全相同)、middleware pipeline 的洋蔥進出實測、`CreateBuilder` 預設註冊 111 個服務。Todo CRUD 五個端點狀態碼驗收全對(201 + `Location`、204、404),並實測冪等性:`POST` 兩次建出兩筆不同 id、`PUT` 三次結果完全相同;另確認「有 id」不是冪等的原因,關鍵在操作是「設定絕對值」還是「在現值上做變化」。DI 三種生命週期實測:同一請求內 Singleton/Scoped 相同、Transient 不同,跨請求只有 Singleton 相同。踩到 Singleton + `List<T>` 的執行緒安全問題:200 個並行 POST 掉 4 筆資料而且**沒有任何例外**;`Update`/`Delete` 把 `FindIndex` 寫在 lock 外造成 14 次 `NullReferenceException`(TOCTOU),改成查詢與寫入同在一個 lock、`GetAll` 回傳鎖內複製的快照後解決。確認 captive dependency:Singleton 注入 Scoped 會在 `Build()` 階段直接拋例外 —— Day 10 把 `TodoService` 改成 Scoped 之後,這些 lock 就不再需要。筆記在 `day8/TodoApi/notes.md`。

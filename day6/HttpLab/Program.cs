@@ -60,6 +60,7 @@ try
         }
     }
 
+    // using 是自動呼叫 Dispose(), StringContent 最終繼承來自 public abstract class HttpContent : IDisposable 有 IDisposable 可以呼叫
     using StringContent jsonData = new(JsonSerializer.Serialize(new
     {
         userId = 1,
@@ -278,6 +279,8 @@ try
     // [1, 2, 3, 4, ..., 10] 起始 1, 數量 10 個
     var tasks = Enumerable.Range(1, 30).Select(i => client.GetFromJsonAsync<Post>($"https://jsonplaceholder.typicode.com/posts/{i}"));
     Post?[] posts = await Task.WhenAll(tasks);
+
+    // OfType<T> 如果不是 T 型別就跳過, 也不會爆炸, (Cast 就是會去轉成 T 型別, 如果失敗就會爆炸)
     var groups = posts.OfType<Post>().GroupBy(p => p.UserId);
     // foreach (var group in groups) 
     // {
