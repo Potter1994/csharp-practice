@@ -9,49 +9,51 @@ public class InMemoryTodoRepository : ITodoRepository
     // 因為在 Repository 才是對資料做改動的時候
     // 鎖要跟「他保護的那份資料」放在一起
     private readonly object _lock = new();
-    public void Add(Todo todo)
+
+    public Task Add(Todo todo)
     {
         lock (_lock)
         {
             _todos.Add(todo);
+            return Task.CompletedTask;
         }
     }
 
-    public bool Delete(Guid id)
+    public Task<bool> Delete(Guid id)
     {
         lock (_lock)
         {
             int index = _todos.FindIndex(todo => todo.Id == id);
-            if (index == -1) return false;
+            if (index == -1) return Task.FromResult(false);
             _todos.RemoveAt(index);
-            return true;
+            return Task.FromResult(true);
         }
     }
 
-    public Todo? GetById(Guid id)
+    public Task<Todo?> GetById(Guid id)
     {
         lock (_lock)
         {
-            return _todos.FirstOrDefault(todo => todo.Id == id);
+            return Task.FromResult(_todos.FirstOrDefault(todo => todo.Id == id));
         }
     }
 
-    public IReadOnlyList<Todo> GetAll()
+    public Task<IReadOnlyList<Todo>> GetAll()
     {
         lock (_lock)
         {
-            return [.. _todos];
+            return Task.FromResult<IReadOnlyList<Todo>>([.. _todos]);
         }
     }
 
-    public bool Update(Todo todo)
+    public Task<bool> Update(Todo todo)
     {
         lock (_lock)
         {
             int index = _todos.FindIndex(t => t.Id == todo.Id);
-            if (index == -1) return false;
+            if (index == -1) return Task.FromResult(false);
             _todos[index] = _todos[index] with { Title = todo.Title, IsDone = todo.IsDone };
-            return true;
+            return Task.FromResult(true);
         }
     }
 }

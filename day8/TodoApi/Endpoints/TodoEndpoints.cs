@@ -34,11 +34,11 @@ public static class TodoEndpoints
         // - 用 `app.MapGroup("/todos")` 收斂共同前綴,端點路徑只剩 `""` 和 `"/{id}"`。
         RouteGroupBuilder group = app.MapGroup("/todos");
 
-        group.MapGet("", (ITodoService service) => Results.Ok(service.GetAll()));
+        group.MapGet("", async (ITodoService service) => Results.Ok(await service.GetAllAsync()));
 
-        group.MapGet("/{id}", (Guid id, ITodoService service) =>
+        group.MapGet("/{id}", async (Guid id, ITodoService service) =>
         {
-            var result = service.GetById(id);
+            var result = await service.GetByIdAsync(id);
             if (result == null)
             {
                 return Results.NotFound();
@@ -48,44 +48,66 @@ public static class TodoEndpoints
 
         });
 
-        group.MapPost("", (CreateTodoRequest request, ITodoService service) =>
+        group.MapPost("", async (CreateTodoRequest request, ITodoService service) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Title))
-            {
-                return Results.BadRequest(new { message = "Title is required." });
-            }
+            // if (string.IsNullOrWhiteSpace(request.Title))
+            // {
+            //     return Results.BadRequest(new { message = "Title is required." });
+            // }
 
-            Todo newTodo = service.Create(request);
-            return Results.Created($"/todos/{newTodo.Id}", newTodo);
+            Result<Todo> result = await service.CreateAsync(request);
+
+            return result.Status switch
+            {
+                ResultStatus.Success => Results.Created($"/todos/{result.Value?.Id}", result.Value),
+                ResultStatus.Invalid => Results.BadRequest(new { message = result.Error }),
+                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                _ => Results.Problem(),
+            };
+
+            // if (result.Status == ResultStatus.Invalid)
+            // {
+            //     return Results.BadRequest(new { message = result.Error });
+            // }
+
+            // 這邊需要特地寫一個不必要的判斷 && newTodo is not null
+            // 需要自己額外防守, Result Pattern 就是為了解決這個
+            // if (result == ResultStatus.Success && newTodo is not null)
+            // {
+            //     return Results.Created($"/todos/{newTodo.Id}", newTodo);
+            // }
+
         });
 
-        group.MapPut("/{id}", (Guid id, CreateTodoRequest request, ITodoService service) =>
+        group.MapPut("/{id}", async (Guid id, CreateTodoRequest request, ITodoService service) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Title))
+            // 改成用 Result Pattern 來處理
+            var result = await service.UpdateAsync(id, request);
+            return result.Status switch
             {
-                return Results.BadRequest(new { message = "Title is required." });
-            }
-
-            var result = service.Update(id, request);
-
-            if (!result)
-            {
-                return Results.NotFound(new { message = "Todo is not found." });
-            }
-
-            return Results.NoContent();
+                ResultStatus.Success => Results.NoContent(),
+                ResultStatus.Invalid => Results.BadRequest(new { message = result.Error }),
+                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                _ => Results.Problem()
+            };
         });
 
-        group.MapDelete("/{id}", (Guid id, ITodoService service) =>
+        group.MapDelete("/{id}", async (Guid id, ITodoService service) =>
         {
-            var result = service.Delete(id);
+            var result = await service.DeleteAsync(id);
 
-            if (!result)
+            return result.Status switch
             {
-                return Results.NotFound(new { message = "Todo id is not found." });
-            }
+                ResultStatus.Success => Results.NoContent(),
+                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                _ => Results.Problem(),
+            };
+            // if (result.Status == ResultStatus.NotFound)
+            // {
+            //     return Results.NotFound(new { message = "Todo id is not found." });
+            // }
 
-            return Results.NoContent();
+            // return Results.NoContent();
         });
     }
 

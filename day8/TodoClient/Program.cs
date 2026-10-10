@@ -20,9 +20,17 @@ try
     // json.Dump();
 
     // `POST` 建立
-    StringContent content = new(JsonSerializer.Serialize(new CreateTodoRequest("TodoClient 建立", false)), Encoding.UTF8, "application/json");
+    StringContent content = new(JsonSerializer.Serialize(new CreateTodoRequest("Hello", false)), Encoding.UTF8, "application/json");
     HttpResponseMessage createResponse = await client.PostAsync("http://localhost:5020/todos", content);
-    createResponse.EnsureSuccessStatusCode();
+    // createResponse.EnsureSuccessStatusCode(); EnsureSuccessStatusCode() 方便, 但是他會把錯誤的細節丟掉
+    // 伺服器想告訴你「為什麼失敗」的資訊在 body 裡,不在狀態碼、也不在例外訊息裡。 (catch 也看不到)
+    if (!createResponse.IsSuccessStatusCode)
+    {
+        // Console.WriteLine($"錯誤訊息: {createResponse.Content.Dump()}")
+        string error = await createResponse.Content.ReadAsStringAsync();
+        Console.WriteLine($"失敗 {(int)createResponse.StatusCode}: {error}");
+        return;
+    }
     Console.WriteLine($"POST 成功回傳的 StatusCode: {(int)createResponse.StatusCode}");
     Todo? createJson = await createResponse.Content.ReadFromJsonAsync<Todo>();
 
@@ -63,6 +71,14 @@ try
     //  `GET` 確認
     HttpResponseMessage getByDeletedIdResponse = await client.GetAsync($"http://localhost:5020/todos/{createJson.Id}");
     Console.WriteLine($"GET 已經刪除的 StatusCode: {(int)getByDeletedIdResponse.StatusCode}");
+
+    // DELETE 之後,那筆已經不存在了 —— 再 PUT 一次
+    HttpResponseMessage putDeletedResponse = await client.PutAsJsonAsync(
+        $"http://localhost:5020/todos/{createJson.Id}",
+        new CreateTodoRequest("改一個不存在的", true));
+
+    Console.WriteLine($"PUT 不存在的 id: {(int)putDeletedResponse.StatusCode}");   // 應該是 404
+    Console.WriteLine($"訊息: {await putDeletedResponse.Content.ReadAsStringAsync()}");
 
 }
 catch (TaskCanceledException e) when (e.InnerException is TimeoutException)
