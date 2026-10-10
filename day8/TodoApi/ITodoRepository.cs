@@ -1,8 +1,8 @@
 public interface ITodoRepository
 {
-    Task<IReadOnlyList<Todo>> GetAll();
-    public Task<Todo?> GetById(Guid id);
-    public Task Add(Todo todo);
-    public Task<bool> Update(Todo todo);
-    public Task<bool> Delete(Guid id);
+    Task<IReadOnlyList<Todo>> GetAllAsync();
+    public Task<Todo?> GetByIdAsync(Guid id);
+    public Task AddAsync(Todo todo);
+    public Task<bool> UpdateAsync(Todo todo);
+    public Task<bool> DeleteAsync(Guid id);
 }

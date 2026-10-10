@@ -25,7 +25,7 @@
 ## 階段二:後端架構設計(C# / ASP.NET Core)
 
 - [x] **Day 8** ASP.NET Core 基礎、Minimal API — 建一個 Todo API(CRUD)(2026-10-08 完成)
-- [ ] **Day 9** 分層架構(Controller/Service/Repository) — 重構 Todo API
+- [x] **Day 9** 分層架構(Controller/Service/Repository) — 重構 Todo API(2026-10-11 完成)
 - [ ] **Day 10** 資料庫:EF Core + PostgreSQL — 接資料庫取代記憶體儲存
 - [ ] **Day 11** API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
 - [ ] **Day 12** 身份驗證/授權(JWT) — 加登入與權限保護
@@ -367,7 +367,7 @@
 - 查 `app.MapGroup("/todos")` 路由群組怎麼用,把五個端點收斂起來。
 - 想一下:現在所有邏輯都塞在 `Program.cs` 裡,如果有 50 個端點會怎樣?(這就是 Day 9 分層架構要解決的問題)
 
-### Day 9:分層架構(Endpoint / Service / Repository)— 重構 Todo API
+### Day 9 ✅:分層架構(Endpoint / Service / Repository)— 重構 Todo API
 
 **環境設置**
 - 直接在 `day8/TodoApi` 上重構,不要開新專案(重構的重點就是「同樣的功能、不同的結構」)。
@@ -428,3 +428,4 @@
 - 2026-10-05:Day 6 完成(練習 1~5 + 延伸)。網路基礎:TCP/UDP 的取捨(UDP 不是「比較快」,而是延遲低 —— 不等重傳也不等按序交付)、三向交握真正的目的是交換初始序號 ISN、HTTP/1.1→2→3 的演進(持久連線 → 多工 + HPACK → QUIC 建在 UDP 上,繞過 TCP 寫死在作業系統裡的按序交付)。`HttpClient` 生命週期:連線池其實在底層的 `SocketsHttpHandler` 上而不是 `HttpClient` 本身,所以每次 `new` 都是一個新的空池子;而 static 單例又因為連線一直活著、從來沒有重新 DNS 解析的時機,解法是設 `PooledConnectionLifetime`(等同 `IHttpClientFactory` 的核心行為)。逾時丟的是 `TaskCanceledException` 而非 `TimeoutException`,要靠 `InnerException is TimeoutException` 才分得出「逾時」與「主動取消」。實測:依序抓 10 筆 1216 ms vs `Task.WhenAll` 363 ms;冷連線 WhenAll 641 ms,但暖身後去抓「從沒抓過的網址」只要 91 ms —— 證明差異來自 TCP/TLS 連線重用,不是內容快取。延伸對照 DevTools 發現 `HttpClient` 預設連一個 request header 都不送(瀏覽器會送十幾個),以及回應裡的 `Alt-Svc: h3`(伺服器支援 HTTP/3 但 .NET 預設不升級)、`ETag`、`cf-cache-status`。補上冪等性與 REST 原則:冪等性決定「請求失敗時能不能重試」,`GET`/`PUT`/`DELETE` 可以安心重試,`POST` 要靠 idempotency key。筆記在 `day6/HttpLab/notes.md`。
 - 2026-10-05:Day 7 完成(複習/整理筆記 + 推上 GitHub)。補上 day1、day2 的 `notes.md`(原本只有 day3~day6 有)。修正前幾天筆記的精確度:`FirstOrDefault` 對實值型別回傳 `default(T)` 而非 null、`ToList()` 是淺層複製(元素仍共用)、`Where().Where()` 不會被合併成 `Where(a && b)`(但延遲執行讓資料只走一遍,不像 JS 會產生中間陣列);day6 的「`HttpClient` 沒有連線池」更正為「連線池在底層的 `SocketsHttpHandler` 上,每次 `new` 都是新的空池子」,並補上冪等性與「逾時能不能重試」的關聯。釐清 `=>` 是 expression-bodied member 不是 lambda(Release 下 IL 與 `{ return ...; }` 完全相同)、local function 捕捉外部變數用 struct 閉包而 lambda 用 class。建立 `.gitignore`(排除 2.6M 的 obj/bin)與 `README.md`,推上 `Potter1994/csharp-practice`。
 - 2026-10-08:Day 8 完成(練習 1~5)。Minimal API 基礎:參數綁定的判斷順序(簡單型別看型別有沒有 `TryParse`、複雜型別落到 body、DI 服務從容器取)、`IResult` 的 `ExecuteAsync` 才是真正寫入回應的地方(自己實作一個 20 行的 `IResult` 行為與 `Results.Ok` 完全相同)、middleware pipeline 的洋蔥進出實測、`CreateBuilder` 預設註冊 111 個服務。Todo CRUD 五個端點狀態碼驗收全對(201 + `Location`、204、404),並實測冪等性:`POST` 兩次建出兩筆不同 id、`PUT` 三次結果完全相同;另確認「有 id」不是冪等的原因,關鍵在操作是「設定絕對值」還是「在現值上做變化」。DI 三種生命週期實測:同一請求內 Singleton/Scoped 相同、Transient 不同,跨請求只有 Singleton 相同。踩到 Singleton + `List<T>` 的執行緒安全問題:200 個並行 POST 掉 4 筆資料而且**沒有任何例外**;`Update`/`Delete` 把 `FindIndex` 寫在 lock 外造成 14 次 `NullReferenceException`(TOCTOU),改成查詢與寫入同在一個 lock、`GetAll` 回傳鎖內複製的快照後解決。確認 captive dependency:Singleton 注入 Scoped 會在 `Build()` 階段直接拋例外 —— Day 10 把 `TodoService` 改成 Scoped 之後,這些 lock 就不再需要。筆記在 `day8/TodoApi/notes.md`。
+- 2026-10-11:Day 9 完成(練習 1~5)。**在 `day8/TodoApi` 上原地重構,沒有另開專案**,筆記在 `day8/TodoApi/notes-day9.md`。把 Day 8 那個同時扮演「業務規則」與「資料存取」的 `TodoService` 拆成 Endpoint / Service / Repository 三層,`Program.cs` 從 132 行縮到 8 行執行程式碼。最重要的觀念修正是「**依賴方向 ≠ 呼叫順序**」:呼叫是雙向的(請求往下、資料往上回),依賴是單向的,看的是「誰的程式碼裡提到誰的型別」;反過來讓 Repository 依賴 Service 會被 DI 容器直接拒絕(`A circular dependency was detected`)。驗收時掃過 Repository 的程式碼,裡面找不到任何 `ITodoService` 字樣 —— 低層完全不知道高層存在。介面設計修掉兩個洩漏:`ITodoRepository` 原本收 `CreateTodoRequest`(那是 API 層的輸入格式)改成只收領域模型 `Todo`,`Guid.CreateVersion7()` 從 Repository 搬回 Service(「Id 怎麼來」是業務規則,不是儲存細節)。練習 4 用 `readonly record struct` 實作 Result pattern,解決「`bool` 分不出該回 404 還是 400」;同時確認**不是每個方法都該包 Result** —— `GetAll` 不會失敗、`GetById` 用 `Todo?` 就表達完整,只有失敗原因超過一種時才需要。練習 5 寫 `FileTodoRepository` 時把整條鏈改成 async(async 會傳染),踩到兩件事:`lock` 區塊內不能 `await`(error CS1996,因為 `Monitor` 必須由同一條執行緒進出,而 `await` 後可能換執行緒),async 世界要用 `SemaphoreSlim(1,1)` 配 `try`/`finally`,而且它**不可重入**,私有輔助方法一律不能再取鎖;另外釐清「只是轉手就不要 async」的例外 —— 有 `try`/`catch` 或 `using` 時必須 `await`,否則例外被包在 Task 裡攔不到、或資源在 Task 跑完前就被釋放。最終驗證:切換 `InMemoryTodoRepository` ↔ `FileTodoRepository` **只改一行註冊**,上面兩層一個字都沒動,重啟後資料還在。過程中踩到的坑:搬運時 `UpdateTodo` 漏掉 lock、`ITodoRepository` 忘了註冊(DI 的接線錯誤編譯不會擋,要到執行期第一次請求才爆)。

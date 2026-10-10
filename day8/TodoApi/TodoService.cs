@@ -10,13 +10,13 @@ public class TodoService(ITodoRepository repo) : ITodoService
 {
     public Task<IReadOnlyList<Todo>> GetAllAsync()
     {
-        return repo.GetAll();
+        return repo.GetAllAsync();
     }
 
     // 只是轉手就不要 async
     public Task<Todo?> GetByIdAsync(Guid id)
     {
-        return repo.GetById(id);
+        return repo.GetByIdAsync(id);
     }
 
     // await 之後還要做事情才去 async
@@ -27,7 +27,7 @@ public class TodoService(ITodoRepository repo) : ITodoService
             return Result<Todo>.Invalid("Title is required.");
         }
         Todo newTodo = new(Guid.CreateVersion7(), request.Title, request.IsDone);
-        await repo.Add(newTodo);
+        await repo.AddAsync(newTodo);
         return Result<Todo>.Ok(newTodo);
     }
     public async Task<Result<Todo>> UpdateAsync(Guid id, CreateTodoRequest request)
@@ -38,7 +38,7 @@ public class TodoService(ITodoRepository repo) : ITodoService
         }
 
         Todo UpdatedTodo = new(id, request.Title, request.IsDone);
-        bool result = await repo.Update(UpdatedTodo);
+        bool result = await repo.UpdateAsync(UpdatedTodo);
 
         if (!result) return Result<Todo>.NotFound("Todo is not found.");
 
@@ -46,7 +46,7 @@ public class TodoService(ITodoRepository repo) : ITodoService
     }
     public async Task<Result> DeleteAsync(Guid id)
     {
-        bool result = await repo.Delete(id);
+        bool result = await repo.DeleteAsync(id);
 
         if (!result) return Result.NotFound("Todo is not found.");
         return Result.Ok();

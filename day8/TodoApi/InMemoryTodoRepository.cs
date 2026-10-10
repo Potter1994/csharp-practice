@@ -10,7 +10,7 @@ public class InMemoryTodoRepository : ITodoRepository
     // 鎖要跟「他保護的那份資料」放在一起
     private readonly object _lock = new();
 
-    public Task Add(Todo todo)
+    public Task AddAsync(Todo todo)
     {
         lock (_lock)
         {
@@ -19,7 +19,7 @@ public class InMemoryTodoRepository : ITodoRepository
         }
     }
 
-    public Task<bool> Delete(Guid id)
+    public Task<bool> DeleteAsync(Guid id)
     {
         lock (_lock)
         {
@@ -30,7 +30,7 @@ public class InMemoryTodoRepository : ITodoRepository
         }
     }
 
-    public Task<Todo?> GetById(Guid id)
+    public Task<Todo?> GetByIdAsync(Guid id)
     {
         lock (_lock)
         {
@@ -38,7 +38,7 @@ public class InMemoryTodoRepository : ITodoRepository
         }
     }
 
-    public Task<IReadOnlyList<Todo>> GetAll()
+    public Task<IReadOnlyList<Todo>> GetAllAsync()
     {
         lock (_lock)
         {
@@ -46,7 +46,7 @@ public class InMemoryTodoRepository : ITodoRepository
         }
     }
 
-    public Task<bool> Update(Todo todo)
+    public Task<bool> UpdateAsync(Todo todo)
     {
         lock (_lock)
         {

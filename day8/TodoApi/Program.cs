@@ -3,7 +3,9 @@ builder.Services.AddSingleton<ITodoService, TodoService>();
 builder.Services.AddSingleton<IGuidService, GuidService>();
 // builder.Services.AddScoped<IGuidService, GuidService>();
 // builder.Services.AddTransient<IGuidService, GuidService>();
-builder.Services.AddSingleton<ITodoRepository, InMemoryTodoRepository>();
+
+// builder.Services.AddSingleton<ITodoRepository, InMemoryTodoRepository>(); // 可以隨時切換 Repository 因為依賴介面所以不會有問題
+builder.Services.AddSingleton<ITodoRepository, FileTodoRepository>();
 var app = builder.Build();
 
 app.MapDemoEndpoints();
