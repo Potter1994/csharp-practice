@@ -1,50 +1,32 @@
-public class TodoService : ITodoService
+public class TodoService(ITodoRepository repo) : ITodoService
 {
-    private readonly List<Todo> _todoList = [
-        new Todo(Guid.CreateVersion7(), "Test 1", false),
-        new Todo(Guid.CreateVersion7(), "Test 2", false),
-        new Todo(Guid.CreateVersion7(), "Test 3", true),
-        new Todo(Guid.CreateVersion7(), "Test 4", false),
-    ];
-    private readonly object _lock = new();
 
     public IReadOnlyList<Todo> GetAll()
     {
-        // [.. _todoList] 相當於 _todoList.ToList();
-        lock (_lock) return [.. _todoList];
+        return repo.GetAll();
     }
 
     public Todo? GetById(Guid id)
     {
-        lock (_lock) return _todoList.FirstOrDefault(todo => todo.Id == id);
+        return repo.GetById(id);
     }
     public Todo Create(CreateTodoRequest request)
     {
-        Todo newTodo = new Todo(Guid.CreateVersion7(), request.Title, request.IsDone);
-        lock (_lock)
+        if (string.IsNullOrWhiteSpace(request.Title))
         {
-            _todoList.Add(newTodo);
+            //  這邊應該要丟不知道什麼錯到 Endpoint 那邊讓他去處理錯誤訊息   
         }
+        Todo newTodo = new(Guid.CreateVersion7(), request.Title, request.IsDone);
+        repo.Add(newTodo);
         return newTodo;
     }
     public bool Update(Guid id, CreateTodoRequest request)
     {
-        lock (_lock)
-        {
-            var index = _todoList.FindIndex(todo => todo.Id == id);
-            if (index == -1) return false;
-            _todoList[index] = _todoList[index] with { Title = request.Title, IsDone = request.IsDone };
-            return true;
-        }
+        Todo UpdatedTodo = new(id, request.Title, request.IsDone);
+        return repo.Update(UpdatedTodo);
     }
     public bool Delete(Guid id)
     {
-        lock (_lock)
-        {
-            var index = _todoList.FindIndex(todo => todo.Id == id);
-            if (index == -1) return false;
-            _todoList.RemoveAt(index);
-            return true;
-        }
+        return repo.Delete(id);
     }
 }

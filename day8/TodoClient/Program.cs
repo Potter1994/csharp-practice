@@ -78,6 +78,15 @@ catch (HttpRequestException e)
 public record Todo(Guid Id, string Title, bool IsDone);
 public record CreateTodoRequest(string Title, bool IsDone);
 
+// error CS1105: 擴充方法必須是靜態的 所以必須是 static class
+/*
+類別的 static
+
+這是語言規定(CS1106),要求擴充方法必須定義在非泛型、非巢狀的 static class 裡。兩個理由:
+
+讓編譯器好找 —— 它要掃描範圍內所有 static class 去蒐集擴充方法。限定在 static class 可以大幅縮小搜尋範圍
+表達意圖 —— 這個類別純粹是個「放方法的容器」,不該能被 new、不該能被繼承、不該有狀態
+*/
 static class DumpExtensions
 {
     static readonly JsonSerializerOptions Options = new()

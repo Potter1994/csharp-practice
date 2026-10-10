@@ -367,6 +367,53 @@
 - 查 `app.MapGroup("/todos")` 路由群組怎麼用,把五個端點收斂起來。
 - 想一下:現在所有邏輯都塞在 `Program.cs` 裡,如果有 50 個端點會怎樣?(這就是 Day 9 分層架構要解決的問題)
 
+### Day 9:分層架構(Endpoint / Service / Repository)— 重構 Todo API
+
+**環境設置**
+- 直接在 `day8/TodoApi` 上重構,不要開新專案(重構的重點就是「同樣的功能、不同的結構」)。
+- 重構前先確認五個端點都正常,重構後用同一份 `.http` 或 `TodoClient` 再跑一次,行為必須完全一樣。
+
+**練習 1:概念暖身(先寫筆記再動手)**
+- Day 8 的 `TodoService` 其實同時扮演了**兩個角色**,是哪兩個?(提示:它既決定「規則」也負責「資料怎麼存」)
+- Endpoint / Service / Repository 三層各自的職責是什麼?什麼東西**不該**出現在每一層?
+- 為什麼依賴方向是 `Endpoint → Service → Repository`,反過來會怎樣?
+- 分層的**代價**是什麼?(別只寫好處 —— 想想檔案數量、追一個 bug 要跳幾層)
+- 對照 Day 8 練習 5 討論過的 Contracts 專案:那個「抽出中立的第三方」跟這裡的分層,是同一個原理嗎?
+
+**練習 2:拆出 Repository 層**
+- 定義 `ITodoRepository`,把「資料怎麼存取」從 `TodoService` 搬過去。
+- 寫 `InMemoryTodoRepository` 實作它,`List<Todo>` 和 `lock` 都搬到這一層。
+- `TodoService` 改成建構函式注入 `ITodoRepository`,它從此**不知道資料存在哪**。
+- 兩個都要註冊到 DI 容器。
+- 想一下:`lock` 為什麼該在 Repository 而不是 Service?
+
+**練習 3:端點搬出 `Program.cs`**
+- 寫一個擴充方法 `public static void MapTodoEndpoints(this WebApplication app)`,把五個端點搬進去(放在 `Endpoints/TodoEndpoints.cs`)。
+- 用 `app.MapGroup("/todos")` 收斂共同前綴,端點路徑只剩 `""` 和 `"/{id}"`。
+- 目標:`Program.cs` 回到 10 行以內。
+
+**練習 4:業務邏輯該放哪一層**
+- 把「標題不能空白」的驗證從端點移到 `TodoService`。端點從此只做一件事:**把 Service 的結果翻譯成 HTTP 狀態碼**。
+- 問題來了:`Update` 現在回傳 `bool`,但失敗有兩種原因 —— 「找不到」要回 404、「標題空白」要回 400,`bool` 分不出來。想一個辦法讓 Service 能表達「為什麼失敗」。
+  (提示:可以回傳 enum、自訂的 Result 型別、或 tuple。先自己想,再查 "Result pattern")
+- 這題的重點不是哪個寫法最好,是體會「**Service 不該知道 HTTP 狀態碼,但要能表達失敗原因**」。
+
+**練習 5(整合小專案):換一個 Repository 實作**
+- 寫 `FileTodoRepository`,把資料存成 JSON 檔(用你 Day 6 的 `System.Text.Json`)。
+- **只改 `Program.cs` 註冊的那一行**切換實作,其他程式碼一個字都不能動。
+- 驗證:重啟程式後資料還在;再切回 `InMemory`,行為一樣正確。
+- 這就是 Day 10 換成 EF Core 時會做的事 —— 介面不變,換掉實作。
+
+**驗收標準**
+- `Program.cs` 在 10 行以內,五個端點行為跟重構前完全相同。
+- 能說出三層各自的職責,以及「這段程式碼該放哪一層」的判斷依據。
+- 切換 `InMemory` ↔ `File` 兩種 Repository 只需要改一行註冊。
+- 能解釋為什麼 `TodoService` 不該出現 `Results.Ok()`、`ITodoRepository` 不該出現 `HttpContext`。
+
+**延伸**
+- 把同一套功能用 Controller 寫一次(`dotnet new webapi --use-controllers`),對照 Minimal API 的分層差在哪。
+- 查一下 Repository 模式的爭議:有人認為 EF Core 的 `DbSet` 本身就是 Repository,再包一層是多餘的。看完之後寫下你的看法。
+
 ## 調整紀錄
 > 之後每次討論學習狀況時,在這裡加一筆日期 + 調整內容,方便回顧課表怎麼演變。
 
