@@ -79,3 +79,6 @@
 
     更精確的說法是:都在實踐「依賴抽象,而非依賴實作」。
     Contracts 那個圖是 Client → Contracts ← Api(兩邊都指向中間);分層是 Endpoint → Service → Repository(一條單向的鏈)。
+
+
+    **延伸題(2026-10-13)**:用「並存」方式加了一組 Controller 版端點(`/api/todos`),跟 Minimal API 的 `/todos` 同時存在、打同一個 `ITodoService`。實測確認 `AddControllers()` 的探索規則**不是靠 `[ApiController]`** —— 判斷條件是「型別名稱以 Controller 結尾」**或**「繼承自標了 `[Controller]` 的基底(`ControllerBase`/`Controller`)」,符合其一即可(實測:沒標 `[ApiController]` 的照樣被註冊、名字不叫 xxxController 但繼承 `ControllerBase` 的也被註冊),只有標 `[NonController]` 才會被排除;`[ApiController]` 管的是**行為** —— 自動模型驗證(回 400 + ProblemDetails)、複雜型別預設從 body 綁定、強制 attribute routing。結構差異:Controller 用**建構函式注入**而 Minimal API 用**方法參數注入**、回傳 `IActionResult`(`Ok()`)而非 `IResult`(`Results.Ok()`)、靠**掃描組件自動發現**端點而 Minimal API 要**明確寫一行註冊**(後者的好處是「看 `Program.cs` 就知道有哪些端點」,前者則是加檔案就生效)。唯一的行為差異在 `Location` header:`Results.Created(uri, value)` 是「你給什麼就是什麼」(相對路徑),而 `CreatedAtAction()` 會用 `LinkGenerator` 反查路由產生**絕對 URL**,好處是改路由時 Location 自動跟著變。最終九項狀態碼對照**完全一致**,而 `ITodoService` / `ITodoRepository` 一個字都沒改 —— 跟練習 5「換 Repository 只改一行」是鏡像的驗證(一個換頭、一個換尾,中間那兩層都無感)。踩到的坑:`[HttpPut]`/`[HttpDelete]` 忘了寫 `"{id}"`,導致 `Guid id` 退回從 query string 綁定;`ResultStatus.NotFound` 複製貼上成 `BadRequest()`,害 404 變成 400。
