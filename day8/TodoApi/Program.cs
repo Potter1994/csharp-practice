@@ -1,4 +1,6 @@
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers(); // 試試用 Controller
+
 builder.Services.AddSingleton<ITodoService, TodoService>();
 builder.Services.AddSingleton<IGuidService, GuidService>();
 // builder.Services.AddScoped<IGuidService, GuidService>();
@@ -8,7 +10,8 @@ builder.Services.AddSingleton<IGuidService, GuidService>();
 builder.Services.AddSingleton<ITodoRepository, FileTodoRepository>();
 var app = builder.Build();
 
-app.MapDemoEndpoints();
+app.MapControllers();
+// app.MapDemoEndpoints();
 app.MapTodoEndpoints();
 
 app.Run();
