@@ -1,8 +1,9 @@
-public class Todo(Guid Id, string Title, bool IsDone)
+public class Todo(Guid id, string title, bool isDone)
 {
-    public Guid Id { get; } = Id;
-    public string Title { get; set; } = Title;
-    public bool IsDone { get; set; } = IsDone;
-};
+    public Guid Id { get; set; } = id;
+    public string Title { get; set; } = title;
+    public bool IsDone { get; set; } = isDone;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
 
 public record CreateTodoRequest(string Title, bool IsDone);

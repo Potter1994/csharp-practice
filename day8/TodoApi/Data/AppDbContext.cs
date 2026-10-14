@@ -10,6 +10,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     // public DbSet<Todo> Todos { get; set; } // ⚠️ nullable enabled 下會警告「未初始化」
     public DbSet<Todo> Todos => Set<Todo>(); // ✅ 建議這樣寫
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<Todo>().HasKey(todo => todo.Id);
+    }
 }
 
 /*

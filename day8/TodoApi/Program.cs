@@ -27,6 +27,22 @@ app.MapControllers();
 // app.MapDemoEndpoints();
 app.MapTodoEndpoints();
 
+// 
+/*
+測試 DateTime 如果是用 DateTime.Now 會出現錯誤訊息:
+System.ArgumentException: Cannot write DateTime with Kind=Local to PostgreSQL type 'timestamp with time zone',
+only UTC is supported. Note that it's not possible to mix DateTimes with different Kinds in an array/range.
+
+必須使用 DateTime.UtcNow
+*/
+app.MapGet("/db-test", async (AppDbContext db) =>
+{
+  Todo todo = new(Guid.CreateVersion7(), "Test", false);
+  db.Todos.Add(todo);
+  await db.SaveChangesAsync();
+  return Results.Ok(todo);
+});
+
 app.Run();
 
 
