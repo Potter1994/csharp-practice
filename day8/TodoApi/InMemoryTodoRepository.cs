@@ -52,7 +52,10 @@ public class InMemoryTodoRepository : ITodoRepository
         {
             int index = _todos.FindIndex(t => t.Id == todo.Id);
             if (index == -1) return Task.FromResult(false);
-            _todos[index] = _todos[index] with { Title = todo.Title, IsDone = todo.IsDone };
+            // _todos[index] = _todos[index] with { Title = todo.Title, IsDone = todo.IsDone }; // 這是 record Todo 的用法
+            var existing = _todos[index];
+            existing.Title = todo.Title;
+            existing.IsDone = todo.IsDone;
             return Task.FromResult(true);
         }
     }

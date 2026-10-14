@@ -96,7 +96,10 @@ public class FileTodoRepository : ITodoRepository
             List<Todo> todoList = await GetTodosFromJson();
             int index = todoList.FindIndex(t => t.Id == todo.Id);
             if (index == -1) return false;
-            todoList[index] = todoList[index] with { Title = todo.Title, IsDone = todo.IsDone };
+            // todoList[index] = todoList[index] with { Title = todo.Title, IsDone = todo.IsDone }; // 這是 record Todo 的用法
+            var existing = todoList[index];
+            existing.Title = todo.Title;
+            existing.IsDone = todo.IsDone;
             await WriteToLocalJsonFile(todoList);
             return true;
         }

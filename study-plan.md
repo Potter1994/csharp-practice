@@ -414,6 +414,66 @@
 - 把同一套功能用 Controller 寫一次(`dotnet new webapi --use-controllers`),對照 Minimal API 的分層差在哪。
 - 查一下 Repository 模式的爭議:有人認為 EF Core 的 `DbSet` 本身就是 Repository,再包一層是多餘的。看完之後寫下你的看法。
 
+### Day 10:資料庫 — EF Core + PostgreSQL
+
+**環境設置**
+1. 用 Docker 跑一個 PostgreSQL(不需要懂 Docker,照抄即可;Day 23 才會正式學):
+   `docker run --name todo-postgres -e POSTGRES_PASSWORD=dev123 -e POSTGRES_DB=tododb -p 5432:5432 -d postgres:17`
+   - `docker ps` 確認容器在跑;`docker stop todo-postgres` / `docker start todo-postgres` 停跑;`docker rm -f todo-postgres` 砍掉重來。
+2. 裝 EF Core 的命令列工具(全域,只要一次):`dotnet tool install --global dotnet-ef`
+3. 在 `day8/TodoApi` 裝兩個套件:
+   - `dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL`(PostgreSQL 的 provider)
+   - `dotnet add package Microsoft.EntityFrameworkCore.Design`(產生 migration 用)
+
+**練習 1:概念暖身(先寫筆記再動手)**
+- **ORM** 解決什麼問題?它的**代價**是什麼?(別只寫好處)
+- `DbContext` 是什麼?為什麼它**必須**是 Scoped,不能是 Singleton?(提示:回去看 Day 8 那個 captive dependency 的錯誤訊息)
+- **Migration** 是什麼?為什麼不直接手寫 SQL 建表就好?
+- **變更追蹤(change tracking)** 是什麼?為什麼改了物件的屬性之後,只要呼叫 `SaveChangesAsync()` 就會寫回資料庫?
+- 對照 Day 9:`DbSet<Todo>` 跟你自己寫的 `ITodoRepository`,**像在哪、不像在哪**?
+
+**練習 2:接上資料庫**
+- 建立 `AppDbContext : DbContext`,裡面放一個 `public DbSet<Todo> Todos { get; set; }`。
+- 連線字串寫在 `appsettings.json`,**不要寫死在程式碼裡**:
+  `"ConnectionStrings": { "Default": "Host=localhost;Port=5432;Database=tododb;Username=postgres;Password=dev123" }`
+- 在 `Program.cs` 註冊:`builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));`
+- 查一下 `AddDbContext` 預設註冊成哪種生命週期,跟你 Day 8 的實測對照。
+
+**練習 3:Migration**
+- `dotnet ef migrations add InitialCreate` —— 打開產生的 `Migrations/` 資料夾,**讀懂 `Up()` 和 `Down()` 在做什麼**。
+- `dotnet ef database update` —— 把表實際建到資料庫。
+- 進去資料庫確認表建好了:`docker exec -it todo-postgres psql -U postgres -d tododb -c "\d \"Todos\""`
+- **再做一次**:幫 `Todo` 加一個 `DateTime CreatedAt` 欄位,重新 `migrations add AddCreatedAt` + `database update`,比較第二份 migration 跟第一份差在哪。
+- 想一下:`Down()` 存在的意義是什麼?
+
+**練習 4(本日主線):`EfTodoRepository`** —— 收 Day 9 留下的伏筆
+- 寫 `EfTodoRepository : ITodoRepository`,**介面一個字都不要改**。
+- `Program.cs` **只改註冊那一行**切換過去。
+- ⚠️ 這時候會踩到一個啟動就炸的錯誤 —— `TodoService` 現在是 `Singleton`,但它要注入的 Repository 依賴 Scoped 的 `DbContext`。想清楚為什麼,然後修好它。
+- 修好之後:**把 `lock` / `SemaphoreSlim` 全部拿掉**,並在筆記裡解釋為什麼現在不需要了。
+- 跑 `TodoClient` 驗證五個端點行為完全不變。
+
+**練習 5(整合小專案):看見 EF Core 真正送出的 SQL**
+- 在 `appsettings.Development.json` 把 EF Core 的 log 等級開到 `Information`,讓它印出每一句 SQL。
+- 打一次 `GET /todos`,看它送出什麼 SQL。
+- 然後做這個對照實驗,**這題是 Day 9 延伸題的答案**:
+  - A:走你的 Repository —— `GetAllAsync()` 之後在記憶體裡 `.Where(t => !t.IsDone).Select(t => t.Title).Take(10)`
+  - B:直接用 `DbSet` —— `db.Todos.Where(t => !t.IsDone).Select(t => t.Title).Take(10).ToListAsync()`
+  - 比較兩者送出的 SQL 有什麼不同,資料量大時差在哪。
+- 寫下你對「EF Core 上面要不要再包 Repository」的看法(Day 9 延伸題欠的那題)。
+
+**驗收標準**
+- 資料存在 PostgreSQL —— **停掉程式、甚至停掉容器再啟動,資料都還在**。
+- 能解釋 `DbContext` 為什麼必須是 Scoped,以及把 `TodoService` 改成 Scoped 之後為什麼 `lock` 就不需要了。
+- 能讀懂 migration 的 `Up()`/`Down()`,以及 EF Core 為一次 `GET /todos` 產生的 SQL。
+- 五個端點行為跟 Day 9 完全一致(用 `TodoClient` 或 `.http` 驗證)。
+- 能用自己跑出來的 SQL 說明「包 Repository」的代價。
+
+**延伸**
+- 幫 `Todo` 加一個關聯(例如 `Category`),體會 `Include()` 和 **N+1 查詢問題**。
+- 查 `AsNoTracking()` 是什麼、什麼時候該用 —— 這跟變更追蹤的成本直接相關。
+- 查一下 `dotnet ef migrations script` 能做什麼(提示:正式環境通常不跑 `database update`)。
+
 ## 調整紀錄
 > 之後每次討論學習狀況時,在這裡加一筆日期 + 調整內容,方便回顧課表怎麼演變。
 

@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers(); // 試試用 Controller
 
@@ -8,6 +10,17 @@ builder.Services.AddSingleton<IGuidService, GuidService>();
 
 // builder.Services.AddSingleton<ITodoRepository, InMemoryTodoRepository>(); // 可以隨時切換 Repository 因為依賴介面所以不會有問題
 builder.Services.AddSingleton<ITodoRepository, FileTodoRepository>();
+
+/*
+=== AddDbContext 一行，實際註冊了 5 個服務 ===
+   Singleton ServiceProviderAccessor
+   Scoped    IDbContextOptionsConfiguration`1
+   Scoped    DbContextOptions`1
+   Scoped    DbContextOptions
+   Scoped    AppDbContext              ← 你問的那個
+*/
+var conn = builder.Configuration.GetConnectionString("Default") ?? throw new InvalidOperationException("application.json 缺少 ConnectionString:Default");
+builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(conn));
 var app = builder.Build();
 
 app.MapControllers();
