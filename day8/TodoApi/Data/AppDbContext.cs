@@ -14,7 +14,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.Entity<Todo>().HasKey(todo => todo.Id);
+
+        // 配置 Todo 表
+        modelBuilder.Entity<Todo>(entity =>
+        {
+            // 指定主鍵
+            entity.HasKey(todo => todo.Id);
+
+            // 配置 Title 欄位
+            entity.Property(t => t.Title)
+                .IsRequired(); // 必填
+
+            // entity.Property(t => t.CreatedAt)
+            //     .HasDefaultValueSql("now()");
+        });
     }
 }
 
