@@ -26,7 +26,7 @@
 
 - [x] **Day 8** ASP.NET Core 基礎、Minimal API — 建一個 Todo API(CRUD)(2026-10-08 完成)
 - [x] **Day 9** 分層架構(Controller/Service/Repository) — 重構 Todo API(2026-10-11 完成)
-- [ ] **Day 10** 資料庫:EF Core + PostgreSQL — 接資料庫取代記憶體儲存
+- [x] **Day 10** 資料庫:EF Core + PostgreSQL — 接資料庫取代記憶體儲存(2026-10-16 完成)
 - [ ] **Day 11** API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
 - [ ] **Day 12** 身份驗證/授權(JWT) — 加登入與權限保護
 - [ ] **Day 13** 單元測試(xUnit) — 幫 Service 層寫測試
@@ -414,7 +414,7 @@
 - 把同一套功能用 Controller 寫一次(`dotnet new webapi --use-controllers`),對照 Minimal API 的分層差在哪。
 - 查一下 Repository 模式的爭議:有人認為 EF Core 的 `DbSet` 本身就是 Repository,再包一層是多餘的。看完之後寫下你的看法。
 
-### Day 10:資料庫 — EF Core + PostgreSQL
+### Day 10 ✅:資料庫 — EF Core + PostgreSQL
 
 **環境設置**
 1. 用 Docker 跑一個 PostgreSQL(不需要懂 Docker,照抄即可;Day 23 才會正式學):
@@ -474,6 +474,58 @@
 - 查 `AsNoTracking()` 是什麼、什麼時候該用 —— 這跟變更追蹤的成本直接相關。
 - 查一下 `dotnet ef migrations script` 能做什麼(提示:正式環境通常不跑 `database update`)。
 
+### Day 11:API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
+
+**練習 1:概念暖身(先寫筆記再動手)**
+- **DTO** 是什麼?為什麼不該直接把 `Todo` 當成 API 的輸入與輸出?
+  (提示:你現在的 `GET /todos` 會把 `CreatedAt` 吐給前端。如果哪天 `Todo` 多了 `OwnerId`、`InternalNote`,或 Day 12 加了密碼雜湊欄位,會發生什麼事?)
+- 你其實已經有一個 DTO 了 —— `CreateTodoRequest`。想兩件事:為什麼它**不該**有 `Id`?為什麼它有 `IsDone` 其實有點可疑?
+- **驗證該放在哪一層?** 你現在的 `IsNullOrWhiteSpace` 檢查在 `TodoService`。下面三種規則是同一類東西嗎?
+  - 「Title 不能空白」「Title 不能超過 200 字」
+  - 「已完成的 Todo 不能再改標題」
+  - 「同一個使用者不能有兩筆同名的 Todo」
+- 查 **ProblemDetails**(RFC 9457,舊編號 RFC 7807)。它解決什麼問題?為什麼需要一個「標準的錯誤回應格式」?
+- 回頭看 Day 6 的冪等性筆記:`PUT` 跟 `PATCH` 的語意差在哪?你現在的 `PUT /todos/{id}` 如果只想改 `IsDone` 一個欄位,用 `PUT` 恰當嗎?
+
+**練習 2:拆出 Response DTO**
+- 現在五個端點直接回傳領域模型 `Todo`。新增一個 `TodoResponse`,只包含前端真的需要的欄位。
+- 問題來了:**轉換放在哪一層?** Endpoint / Service / Repository?先自己決定再往下看。
+  (提示:`ITodoService` 現在回傳 `Result<Todo>`。如果改成 `Result<TodoResponse>`,Service 就知道了 API 的輸出格式 —— 那是好事還是壞事?回去看 Day 9 把 `CreateTodoRequest` 從 `ITodoRepository` 移走的理由。)
+- 做完回答:如果 `Todo` 加一個 `InternalNote` 欄位,要改幾個檔案?會不會意外洩漏給前端?
+
+**練習 3:輸入驗證**
+- 把 `TodoService` 裡手寫的 `string.IsNullOrWhiteSpace(request.Title)` 換成宣告式驗證。先查清楚:**.NET 10 的 Minimal API 有沒有內建的驗證支援?**
+  (提示:查 `AddValidation`,以及 `[Required]`/`[StringLength]` 這些 Data Annotations 在 Minimal API 上會不會自動生效 —— 這跟 Controller 的行為歷來不同,別假設一樣)
+- 規則:`Title` 必填、長度 1~200。
+- **然後比較兩套端點**:同樣送一個空的 Title,Minimal API 版和 Controller 版回傳的狀態碼一樣嗎?body 的 JSON 結構一樣嗎?
+- 關鍵問題:驗證移到端點之後,`TodoService` 裡那個 `Result<Todo>.Invalid("Title is required.")` **還需要嗎?** 如果拿掉,哪天有背景作業直接呼叫 `ITodoService` 時,誰來擋?
+
+**練習 4:錯誤處理 middleware**
+- 先**故意製造一次未預期的例外**:把 `appsettings.json` 的連線字串改錯,打 `GET /todos`,看客戶端拿到什麼。
+- 同一件事在兩種環境各試一次,比較差異:`dotnet run` 跟 `ASPNETCORE_ENVIRONMENT=Production dotnet run`。想一下為什麼預設行為要這樣設計。
+- 用 `IExceptionHandler`(.NET 8+)或 `UseExceptionHandler` 做統一的錯誤處理:所有未預期的例外都回 `ProblemDetails` 格式的 500,而且**不洩漏 stack trace 或連線字串**。
+- 加上 `builder.Services.AddProblemDetails()`,觀察它對原本的 404、400 回應有什麼影響。
+- 想一下:middleware 的註冊順序重要嗎?錯誤處理該放在 pipeline 的哪個位置?(回去看 Day 8 那個洋蔥進出的實測)
+
+**練習 5(整合小專案):把 API 契約收乾淨**
+- 讓五個端點的**所有**錯誤回應都是 `ProblemDetails` 格式 —— 400(驗證失敗)、404(找不到)、500(未預期例外)全部統一。
+- 用 `TodoClient` 或 `.http` 跑一輪完整驗收。這次不只檢查狀態碼,還要檢查**回應 body 的格式一致性**。
+- 加一個 `PATCH /todos/{id}` 端點(只改 `IsDone`),對照它跟 `PUT /todos/{id}` 的語意差異,並驗證兩者都冪等。
+- 寫下你對「DTO 要不要為每個操作各拆一個」的看法:你會有 `CreateTodoRequest`、`TodoResponse`,那 `Update` 要不要自己的 `UpdateTodoRequest`?`PATCH` 要不要第三個?
+
+**驗收標準**
+- 領域模型 `Todo` 不再出現在任何 API 的輸入或輸出上。
+- 送不合法的輸入,兩套端點(Minimal API / Controller)回傳的狀態碼與 body 格式一致。
+- 連線字串改錯之後,客戶端拿到的是乾淨的 `ProblemDetails` 500,看不到 stack trace,也看不到連線字串。
+- 能解釋「格式驗證」「業務規則驗證」「資料完整性驗證」分別該在哪一層,以及為什麼。
+- 能說明為什麼 `PUT` 和 `PATCH` 都冪等而 `POST` 不冪等 —— 用你 Day 6 的結論(關鍵在「設定絕對值 vs 在現值上做變化」)檢查你的 `PATCH` 設計。
+
+**延伸**
+- 查 FluentValidation,比較它跟 Data Annotations 的取捨(表達力、跨欄位規則 vs 多一個依賴)。
+- 查 `[ApiController]` 的自動模型驗證是怎麼運作的 —— 為什麼 Controller 版不需要你手動檢查 `ModelState`?回去看 Day 9 那個「探索規則不是靠 `[ApiController]`」的結論,這次看的是它**真正**負責的事。
+- 查 OpenAPI:`dotnet new webapi` 預設附的那個東西是什麼,DTO 跟它的關係是什麼。
+- 想一下 API 版本控制:哪天 `TodoResponse` 要改欄位名,已經上線的前端怎麼辦?
+
 ## 調整紀錄
 > 之後每次討論學習狀況時,在這裡加一筆日期 + 調整內容,方便回顧課表怎麼演變。
 
@@ -489,3 +541,4 @@
 - 2026-10-05:Day 7 完成(複習/整理筆記 + 推上 GitHub)。補上 day1、day2 的 `notes.md`(原本只有 day3~day6 有)。修正前幾天筆記的精確度:`FirstOrDefault` 對實值型別回傳 `default(T)` 而非 null、`ToList()` 是淺層複製(元素仍共用)、`Where().Where()` 不會被合併成 `Where(a && b)`(但延遲執行讓資料只走一遍,不像 JS 會產生中間陣列);day6 的「`HttpClient` 沒有連線池」更正為「連線池在底層的 `SocketsHttpHandler` 上,每次 `new` 都是新的空池子」,並補上冪等性與「逾時能不能重試」的關聯。釐清 `=>` 是 expression-bodied member 不是 lambda(Release 下 IL 與 `{ return ...; }` 完全相同)、local function 捕捉外部變數用 struct 閉包而 lambda 用 class。建立 `.gitignore`(排除 2.6M 的 obj/bin)與 `README.md`,推上 `Potter1994/csharp-practice`。
 - 2026-10-08:Day 8 完成(練習 1~5)。Minimal API 基礎:參數綁定的判斷順序(簡單型別看型別有沒有 `TryParse`、複雜型別落到 body、DI 服務從容器取)、`IResult` 的 `ExecuteAsync` 才是真正寫入回應的地方(自己實作一個 20 行的 `IResult` 行為與 `Results.Ok` 完全相同)、middleware pipeline 的洋蔥進出實測、`CreateBuilder` 預設註冊 111 個服務。Todo CRUD 五個端點狀態碼驗收全對(201 + `Location`、204、404),並實測冪等性:`POST` 兩次建出兩筆不同 id、`PUT` 三次結果完全相同;另確認「有 id」不是冪等的原因,關鍵在操作是「設定絕對值」還是「在現值上做變化」。DI 三種生命週期實測:同一請求內 Singleton/Scoped 相同、Transient 不同,跨請求只有 Singleton 相同。踩到 Singleton + `List<T>` 的執行緒安全問題:200 個並行 POST 掉 4 筆資料而且**沒有任何例外**;`Update`/`Delete` 把 `FindIndex` 寫在 lock 外造成 14 次 `NullReferenceException`(TOCTOU),改成查詢與寫入同在一個 lock、`GetAll` 回傳鎖內複製的快照後解決。確認 captive dependency:Singleton 注入 Scoped 會在 `Build()` 階段直接拋例外 —— Day 10 把 `TodoService` 改成 Scoped 之後,這些 lock 就不再需要。筆記在 `day8/TodoApi/notes.md`。
 - 2026-10-11:Day 9 完成(練習 1~5)。**在 `day8/TodoApi` 上原地重構,沒有另開專案**,筆記在 `day8/TodoApi/notes-day9.md`。把 Day 8 那個同時扮演「業務規則」與「資料存取」的 `TodoService` 拆成 Endpoint / Service / Repository 三層,`Program.cs` 從 132 行縮到 8 行執行程式碼。最重要的觀念修正是「**依賴方向 ≠ 呼叫順序**」:呼叫是雙向的(請求往下、資料往上回),依賴是單向的,看的是「誰的程式碼裡提到誰的型別」;反過來讓 Repository 依賴 Service 會被 DI 容器直接拒絕(`A circular dependency was detected`)。驗收時掃過 Repository 的程式碼,裡面找不到任何 `ITodoService` 字樣 —— 低層完全不知道高層存在。介面設計修掉兩個洩漏:`ITodoRepository` 原本收 `CreateTodoRequest`(那是 API 層的輸入格式)改成只收領域模型 `Todo`,`Guid.CreateVersion7()` 從 Repository 搬回 Service(「Id 怎麼來」是業務規則,不是儲存細節)。練習 4 用 `readonly record struct` 實作 Result pattern,解決「`bool` 分不出該回 404 還是 400」;同時確認**不是每個方法都該包 Result** —— `GetAll` 不會失敗、`GetById` 用 `Todo?` 就表達完整,只有失敗原因超過一種時才需要。練習 5 寫 `FileTodoRepository` 時把整條鏈改成 async(async 會傳染),踩到兩件事:`lock` 區塊內不能 `await`(error CS1996,因為 `Monitor` 必須由同一條執行緒進出,而 `await` 後可能換執行緒),async 世界要用 `SemaphoreSlim(1,1)` 配 `try`/`finally`,而且它**不可重入**,私有輔助方法一律不能再取鎖;另外釐清「只是轉手就不要 async」的例外 —— 有 `try`/`catch` 或 `using` 時必須 `await`,否則例外被包在 Task 裡攔不到、或資源在 Task 跑完前就被釋放。最終驗證:切換 `InMemoryTodoRepository` ↔ `FileTodoRepository` **只改一行註冊**,上面兩層一個字都沒動,重啟後資料還在。過程中踩到的坑:搬運時 `UpdateTodo` 漏掉 lock、`ITodoRepository` 忘了註冊(DI 的接線錯誤編譯不會擋,要到執行期第一次請求才爆)。
+- 2026-10-16:Day 10 完成(練習 1~5 + 延伸)。**同樣在 `day8/TodoApi` 上原地接資料庫**,筆記在 `day8/TodoApi/notes-day10.md`。Docker 跑 PostgreSQL,`AddDbContext` 一行實測註冊了 5 個服務(`AppDbContext` 是 Scoped);釐清 `where TContext : DbContext` 是泛型約束、`DbSet<Todo> Todos => Set<Todo>()` 是 expression-bodied member(所以沒有未初始化警告 —— 計算屬性沒有欄位),而編譯器對 DbContext 的 `DbSet` 自動屬性另有特例(不報 CS8618)。**Migration 的三個組成部分**:migration 檔案(`Up`/`Down`)、snapshot(「模型目前長什麼樣」)、資料庫裡的 `__EFMigrationsHistory`(「這台資料庫跑到哪」);`migrations add` 只比對模型與 snapshot、完全不碰資料庫,`database update` 只比對檔案清單與 history 表、完全不看 C# 模型 —— 這一天踩的每個坑都是這兩條軸不同步的後果。踩到的坑依序是:`CreatedAt { get; }` 沒有 setter 又不在建構子參數裡,EF Core 直接不納入模型,於是 `migrations add` 產生**空的 `Up()`**(而且 `database update` 會成功、會記進 history 表、資料庫什麼都沒變);跳過 `database update` 就打端點拿到 `42703 column does not exist`(模型推進了但 schema 沒);`DateTime.Now` 寫進 `timestamptz` 被 Npgsql 擋下(`Kind` 必須是 `Utc`),而且這個錯誤只在**執行期第一次寫入**才爆,`migrations add` / `database update` 都不會提前發現。回滾實驗驗證了 `Down()` 的真正代價:`DropColumn` 之後再 `Up()` 回來,同一筆資料的 `Id`/`Title` 活著、`CreatedAt` 變成 `-infinity`(EF Core 的 `defaultValue: DateTime.MinValue` 經 Npgsql 映射成 PostgreSQL 的特殊值),**schema 可逆、資料不可逆**,而且事後完全看不出那一欄曾經有值。把 `Todo` 從 `record` 改成 class 以配合 change tracking 時,順手把 `Id` 移出建構子,造成 `UpdateAsync(id, request)` 的 `id` 參數完全沒被使用、`Guid.CreateVersion7()` 每次產生新 Id、PUT 永遠回 404 —— 編譯器對未使用的參數沒有警告,屬於全靜默的 bug;修法是把必填的 identity 放回建構子參數,**讓編譯器當守門員**。同一個錯誤模式也出現在 Day 8 自己寫的 `IGuidService`:`{ get; } = Guid.CreateVersion7()` 配 Singleton 註冊 → 整個程式生命週期只算一次 → 永遠同一個 Guid(實測 `new Todo()` 三次得到三個不同 Guid、Singleton 的 `svc.Id` 讀三次完全相同,證明兩者差別在「new 幾次」而不是 initializer 行為)。`EfTodoRepository` 寫完後抓到 `FirstAsync` 的語意:找不到時**丟 `InvalidOperationException` 而不是回傳 null**,導致 `if (todo != null)` 恆真、`return false` 成為死碼、三個方法的 404 路徑全部變成 500,而 `dotnet build` 零警告;換成 `FirstOrDefaultAsync` 後修復,並記下 `First`/`FirstOrDefault`/`Single`/`SingleOrDefault` 四者的對稱語意。另一個行為差異是 `GetAllAsync` 沒有 `ORDER BY` —— PostgreSQL 不保證回傳順序,而 `InMemory`/`File` 版是穩定的插入順序,換實作後行為悄悄分岔;因為 Id 是 Guid v7(開頭即時間戳),加 `OrderBy(t => t.Id)` 就取回插入順序。`UpdateAsync` 刻意不用 `db.Update(todo)` 而是「先查出被追蹤的實體再改欄位」,讓 change tracker 只把變更的欄位寫進 `UPDATE` —— 否則整列覆蓋會把 `CreatedAt` 重設成當下時間(又一個靜默失敗)。`lock`/`SemaphoreSlim` 全部拿掉:`DbContext` 是 Scoped、每個請求一個獨立實例,沒有共享狀態可競爭,併發控制下移到資料庫的交易與 MVCC;但要記住 `DbContext` **本身不是執行緒安全**,它不需要鎖是因為 Scoped 保證它不被多執行緒同時碰。練習 5 開 SQL log 做對照實驗(10000 筆):走 Repository 送出 `SELECT` 四個欄位、全表、無 `WHERE` 無 `LIMIT`,92 ms;直接用 `DbSet` 送出 `SELECT "Title"` + `WHERE NOT "IsDone"` + `LIMIT @p`,24 ms —— `ToListAsync()` 就是 `IQueryable`(組 SQL)與 `IEnumerable`(記憶體)的分界線。`AsNoTracking()` 加在 `GetAllAsync`(不加在 `GetByIdAsync`,因為方法名無法表達「結果不可改」,而不被追蹤的實體改了之後 `SaveChanges` 不會有任何反應);實測 `ReferenceEquals` 確認追蹤模式下同一個 Id 查兩次回傳**同一個物件實例**(identity map),`AsNoTracking` 則是兩個獨立物件 —— 也因此追蹤模式下第二次查詢拿不到資料庫的最新值。**Repository 模式的結論(Day 9 延伸題欠的那題)**:寫入走 Repository(封裝業務規則、Result pattern、交易邊界),複雜查詢直接用 `DbContext` —— 也就是分讀寫;而最重要的體會是「**可替換性與查詢能力是同一個取捨的兩面**」:這一天把 Repository 從 `InMemory` → `File` → `EfCore` 換過三次、只改 `Program.cs` 一行註冊、Day 8 寫的 `TodoClient` 測試一字未改全綠,之所以能這麼輕鬆正是因為介面只有五個方法;而介面只有 `GetAllAsync()` 也正是上面那句爛 SQL 的原因 —— 要讓查詢下推到 SQL 介面就得膨脹,膨脹到四十個方法就再也寫不出第二個實作了。延伸題:釐清 **EF Core 預設不會發生 N+1**(預設關閉 lazy loading,要主動裝 `Proxies` 套件 + `UseLazyLoadingProxies()` + `virtual` 導覽屬性才會),真正的來源是自己手寫的迴圈(Day 11 做 DTO 轉換時最容易踩),而 `Include` 自己帶來笛卡爾爆炸的風險、`AsSplitQuery()` 是第三種取捨;`dotnet ef migrations script --idempotent` 實際跑過兩次,看到每個 migration 被包在獨立交易裡、schema 變更與 history 記錄同進同退(PostgreSQL 支援交易式 DDL 才辦得到),以及正式環境不跑 `database update` 的關鍵理由 —— 它需要載入專案 assembly,而生產環境沒有原始碼和 SDK。最後釐清 Fluent API:`HasKey(t => t.Id)` 和 `Property(t => t.Title).IsRequired()` 都是 no-op(convention 已經做到,證據是 `InitialCreate` 在 `OnModelCreating` 寫出來之前就已經產生了正確的主鍵與 `NOT NULL`),`HasDefaultValue()` 無參數版本等於 CLR 預設值也就是 `-infinity`,而 `HasDefaultValueSql("now()")` 在 C# 端仍有 `= DateTime.UtcNow` initializer 的情況下**永遠不會生效**(SQL 的 DEFAULT 只在 INSERT 省略該欄時才套用)—— 真正需要資料庫預設值的場景是「寫入來源不只應用程式」「需要單一時間來源」「migration 回填既有資料」。

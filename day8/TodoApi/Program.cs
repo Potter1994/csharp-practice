@@ -63,8 +63,10 @@ app.MapTodoEndpoints();
     而 B 所有的查詢、篩選、Select 都直接在 SQL 那邊就做完了
 
 - 寫下你對「EF Core 上面要不要再包 Repository」的看法(Day 9 延伸題欠的那題)。
-    我終於明白你的意思了, 我覺得可能還是要包 Repository 會更好一點,
-    如果真的有很多不一樣的資料操作可能就是一直新增方法到 ITodoRepository 來讓 Repository 實作是不錯的解決方法
+    1. 接受介面膨脹 —— 方法數還在十幾個以內時完全可行,別過度設計
+    2. Specification pattern —— 把查詢條件物件化,GetAsync(ISpecification<Todo> spec)。介面不膨脹了,但你等於自己重新發明一套查詢語言 —— 而 LINQ 本來就是
+    3. 讓 Repository 回傳 IQueryable<T> —— 效能問題消失,但抽象完全漏光:上層現在直接依賴 EF Core 的查詢語意,InMemoryTodoRepository 再也不可能正確實作它。這等於承認「我只是想要一個命名空間」
+    4. 分讀寫 —— 寫入走 Repository(需要封裝業務規則、Result pattern、交易邊界),查詢直接用 DbContext 或 Dapper(需要效能和彈性)。這是現在最主流的務實答案,也是 CQRS 的輕量版
 */
 app.MapGet("/repository-test", async (ITodoRepository repo) =>
 {

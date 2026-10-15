@@ -42,7 +42,7 @@ await db.SaveChangesAsync();
         InvalidOperationException: A second operation was started on this context instance
         before a previous operation completed.
         
-    2. 交界邊界會混在一起 <- 最可怕, 因為是靜默的資料錯誤
+    2. 交易邊界會混在一起 <- 最可怕, 因為是靜默的資料錯誤
         SaveChangesAsync() 是一個交易。如果共用同一個 DbContext:
         請求 A：改了 Todo 1，還沒 SaveChanges
         請求 B：改了 Todo 2，呼叫 SaveChanges
@@ -71,7 +71,7 @@ await db.SaveChangesAsync();
     dotnet ef migrations script                       # 從零到最新
     dotnet ef migrations script InitialCreate         # 從 InitialCreate 之後到最新
     dotnet ef migrations script AddCreatedAt InitialCreate   # 反向 → 產生 Down() 的 SQL
-    
+
     dotnet ef migrations script --idempotent -o migrate.sql
     你會看到每段 SQL 被包進 PostgreSQL 的 DO $$ ... IF NOT EXISTS ... END $$ 區塊裡,先檢查 history 表有沒有這筆才執行。
     這就是「同一份腳本對任何進度的資料庫都安全」的實作方式。
@@ -116,6 +116,22 @@ await db.SaveChangesAsync();
     - `DbSet<T>` 是通用的, `ITodoRepository` 是為 Todo 客製的
 
 
+寫下你對「EF Core 上面要不要再包 Repository」的看法(Day 9 延伸題欠的那題)。
+    我覺得還是需要包 Repository, 這樣能無痛切換, 會遇到 SQL 相關效能問題可以在 IRepository 只給寫入相關的, 而複雜查詢的時候再額外使用 db 去寫
+    但這個代價就是會有某一層直接依賴 AppDbContext, 也就是直接依賴 EF Core。
+
+1. 你今天把 Repository 從 InMemory 換到 File 再換到 EfCore,一共改了幾行?TodoClient 那套測試改了幾個字?
+    只改一行註冊,Service / Endpoint / Controller / TodoClient 測試全部沒動
+
+2. 那句 SELECT t."Id", t."CreatedAt", t."IsDone", t."Title" FROM "Todos" ORDER BY t."Id",在表裡有十萬筆資料的時候會發生什麼事?你的 92 ms 是 10000 筆的數字。
+    會取回十萬筆資料, 然後在本地記憶體再去做處理
+
+3. 如果 ITodoRepository 有 40 個方法,你還能在一個下午寫出 FileTodoRepository 嗎?
+    這樣每個 Repository 都要寫 40 個方法太不切實際了
+
+上面三個題目連接起來:
+    「可替換性」和「查詢能力」是同一個取捨的兩面, 不是兩個獨立的優缺點。
+    介面小才換得動, 但介面小就意味者查詢只能在記憶體做; 要讓查詢下推到 SQL, 介面就得膨脹, 而膨脹到一定程度就換不動了。
 
 
 EF Core 是什麼?
