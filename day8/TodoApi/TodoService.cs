@@ -26,23 +26,39 @@ public class TodoService(ITodoRepository repo) : ITodoService
         {
             return Result<Todo>.Invalid("Title is required.");
         }
-        Todo newTodo = new(Guid.CreateVersion7(), request.Title, request.IsDone);
+        Todo newTodo = new(Guid.CreateVersion7(), request.Title, false);
         await repo.AddAsync(newTodo);
         return Result<Todo>.Ok(newTodo);
     }
-    public async Task<Result<Todo>> UpdateAsync(Guid id, CreateTodoRequest request)
+    public async Task<Result<Todo>> UpdateAsync(Guid id, UpdateTodoRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Title))
-        {
             return Result<Todo>.Invalid("Title is required.");
-        }
 
-        Todo UpdatedTodo = new(id, request.Title, request.IsDone);
+        if (request.IsDone is null)
+            return Result<Todo>.Invalid("IsDone is required.");
+
+        Todo UpdatedTodo = new(id, request.Title, request.IsDone.Value);
         bool result = await repo.UpdateAsync(UpdatedTodo);
 
         if (!result) return Result<Todo>.NotFound("Todo is not found.");
 
         return Result<Todo>.Ok(UpdatedTodo);
+    }
+    public async Task<Result<Todo>> PatchAsync(Guid id, SetDoneRequest request)
+    {
+        if (request.IsDone is null)
+            return Result<Todo>.Invalid("IsDone is required.");
+
+        Todo? existing = await repo.GetByIdAsync(id);
+        if (existing is null)
+            return Result<Todo>.NotFound("Todo is not found.");
+
+        Todo updated = new(id, existing.Title, request.IsDone.Value);
+        bool result = await repo.UpdateAsync(updated);
+        if (!result) return Result<Todo>.NotFound("Todo is not found.");
+
+        return Result<Todo>.Ok(updated);
     }
     public async Task<Result> DeleteAsync(Guid id)
     {

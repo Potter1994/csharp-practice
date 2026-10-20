@@ -5,7 +5,7 @@
 
 - Endpoint / Service / Repository 三層各自的職責是什麼?什麼東西**不該**出現在每一層?
     Endpoint: <!--處理路由, 根據 url 及 method 來去處理相對應的事情-->
-        職責: 解析 HTTP 請求、把結果翻譯成狀態碼
+        職責: 解析 HTTP 請求、把結果翻譯成狀態碼、回傳 body 的形狀
         不該出現: 業務規則、直接操作 SQL/List
     Service: <!-- 對資料的規則處理 -->
         職責: 業務規則、驗證、流程協調

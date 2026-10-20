@@ -34,18 +34,17 @@ public static class TodoEndpoints
         // - 用 `app.MapGroup("/todos")` 收斂共同前綴,端點路徑只剩 `""` 和 `"/{id}"`。
         RouteGroupBuilder group = app.MapGroup("/todos");
 
-        group.MapGet("", async (ITodoService service) => Results.Ok(await service.GetAllAsync()));
+        group.MapGet("", async (ITodoService service) => Results.Ok((await service.GetAllAsync()).Select(t => t.ToResponse())));
 
         group.MapGet("/{id}", async (Guid id, ITodoService service) =>
         {
             var result = await service.GetByIdAsync(id);
             if (result == null)
-            {
-                return Results.NotFound();
-            }
+                // 我在 Program.cs 有預設 404 回傳的 detail 了, 就統一使用一樣的回傳訊息就好
+                // return Results.Problem(detail: "Todo is Not Found", statusCode: StatusCodes.Status404NotFound);
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound);
 
-            return Results.Ok(result);
-
+            return Results.Ok(result.ToResponse());
         });
 
         group.MapPost("", async (CreateTodoRequest request, ITodoService service) =>
@@ -59,9 +58,9 @@ public static class TodoEndpoints
 
             return result.Status switch
             {
-                ResultStatus.Success => Results.Created($"/todos/{result.Value?.Id}", result.Value),
-                ResultStatus.Invalid => Results.BadRequest(new { message = result.Error }),
-                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                ResultStatus.Success => Results.Created($"/todos/{result.Value?.Id}", result.Value?.ToResponse()),
+                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
                 _ => Results.Problem(),
             };
 
@@ -79,16 +78,28 @@ public static class TodoEndpoints
 
         });
 
-        group.MapPut("/{id}", async (Guid id, CreateTodoRequest request, ITodoService service) =>
+        group.MapPut("/{id}", async (Guid id, UpdateTodoRequest request, ITodoService service) =>
         {
             // 改成用 Result Pattern 來處理
             var result = await service.UpdateAsync(id, request);
             return result.Status switch
             {
                 ResultStatus.Success => Results.NoContent(),
-                ResultStatus.Invalid => Results.BadRequest(new { message = result.Error }),
-                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
                 _ => Results.Problem()
+            };
+        });
+
+        group.MapPatch("/{id}/done", async (Guid id, SetDoneRequest request, ITodoService service) =>
+        {
+            var result = await service.PatchAsync(id, request);
+            return result.Status switch
+            {
+                ResultStatus.Success => Results.NoContent(),
+                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
+                _ => Results.Problem(),
             };
         });
 
@@ -99,7 +110,7 @@ public static class TodoEndpoints
             return result.Status switch
             {
                 ResultStatus.Success => Results.NoContent(),
-                ResultStatus.NotFound => Results.NotFound(new { message = result.Error }),
+                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
                 _ => Results.Problem(),
             };
             // if (result.Status == ResultStatus.NotFound)

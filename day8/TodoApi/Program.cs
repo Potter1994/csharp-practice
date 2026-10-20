@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi();
 builder.Services.AddControllers(); // 試試用 Controller
 
 builder.Services.AddScoped<ITodoService, TodoService>(); // 要改成 Scoped 這樣 service 在引用 EF Core 的時候才不會壞掉
@@ -10,6 +11,28 @@ builder.Services.AddScoped<ITodoService, TodoService>(); // 要改成 Scoped 這
 // builder.Services.AddSingleton<ITodoRepository, InMemoryTodoRepository>(); // 可以隨時切換 Repository 因為依賴介面所以不會有問題
 // builder.Services.AddSingleton<ITodoRepository, FileTodoRepository>();
 builder.Services.AddScoped<ITodoRepository, EfTodoRepository>();
+
+// Day11 練習三新增 AddValidation() 讓 Minimal API 可以像 MVC 一樣進行 Data Annotations 
+builder.Services.AddValidation();
+
+// Day11 練習四新增 AddProblemDetails 讓 Minimal API 可以像 MVC 一樣回傳 ProblemDetails 格式的錯誤
+builder.Services.AddProblemDetails(options =>
+{
+  // 可以在這邊預設 Detail, 使用 ??= 則是如果沒有設置 Detail 的情況下才去, 不會影響到我有設置的時候
+  options.CustomizeProblemDetails = ctx =>
+  {
+    ctx.ProblemDetails.Detail ??= ctx.ProblemDetails.Status switch
+    {
+      400 => "The request could not be understand. Check the URL and request body.",
+      404 => "The requested resource was not found.",
+      500 => "An unexcepted error occurred.",
+      _ => null,
+    };
+  };
+});
+
+// Day11 練習四新增例外處理的 500 error
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 /*
 === AddDbContext 一行，實際註冊了 5 個服務 ===
@@ -31,6 +54,42 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 });
 var app = builder.Build();
 
+app.UseExceptionHandler(); // 處理「丟出來的例外」 -> 500
+app.UseStatusCodePages(); // 處理「狀態碼是 4xx/5xx 但 body 空的」回應 (只有 body 是空的才會用喔)
+/*
+五種錯誤,只有一種是例外
+
+回應	 怎麼產生的	                 UseExceptionHandler 攔得到嗎
+400   參數綁定失敗(/todos/asdf)	   綁定階段,handler 沒執行	❌
+400   驗證失敗(空 Title)	        驗證 filter,handler 沒執行	❌
+404   路由不存在(/foo)	          routing 階段	❌
+404   資料找不到	                你的程式碼主動回傳	❌
+500   資料庫連不上	              真的丟了例外	✅
+*/
+
+app.Use(async (context, next) =>
+{
+  if (context.Request.Path == "/boom")
+  {
+    throw new InvalidOperationException("測試用的爆炸");
+  }
+  await next();
+});
+
+/* 如果 middleware 是這個順序: 打 /boom → 例外往上穿過 UseExceptionHandler,沒人攔(Production 下又變成空白 500)❌
+app.Use(...那個會爆的...);
+app.UseExceptionHandler();
+
+這才是「洋蔥包覆」的真正含意:UseExceptionHandler 只能攔到比它內層的東西,而你自己加的 middleware 是有先後的。
+實務上這就是為什麼標準的註冊順序長這樣:
+app.UseExceptionHandler();   // 最外層 —— 要能攔到下面全部
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();        // 位置無關,端點永遠最內層
+*/
+
+app.MapOpenApi();
 app.MapControllers();
 // app.MapDemoEndpoints();
 app.MapTodoEndpoints();

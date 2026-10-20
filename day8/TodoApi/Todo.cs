@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 public class Todo(Guid id, string title, bool isDone)
 {
     public Guid Id { get; set; } = id;
@@ -6,4 +8,6 @@ public class Todo(Guid id, string title, bool isDone)
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public record CreateTodoRequest(string Title, bool IsDone);
+public record CreateTodoRequest([Required][StringLength(20)] string Title);
+public record UpdateTodoRequest([Required][StringLength(20)] string Title, [Required] bool? IsDone);
+public record SetDoneRequest([Required] bool? IsDone);
