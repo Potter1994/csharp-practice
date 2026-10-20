@@ -27,7 +27,7 @@
 - [x] **Day 8** ASP.NET Core 基礎、Minimal API — 建一個 Todo API(CRUD)(2026-10-08 完成)
 - [x] **Day 9** 分層架構(Controller/Service/Repository) — 重構 Todo API(2026-10-11 完成)
 - [x] **Day 10** 資料庫:EF Core + PostgreSQL — 接資料庫取代記憶體儲存(2026-10-16 完成)
-- [ ] **Day 11** API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
+- [x] **Day 11** API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware(2026-10-20 完成)
 - [ ] **Day 12** 身份驗證/授權(JWT) — 加登入與權限保護
 - [ ] **Day 13** 單元測試(xUnit) — 幫 Service 層寫測試
 - [ ] **Day 14** 【複習/補進度】用 Postman 完整測試 API
@@ -474,7 +474,7 @@
 - 查 `AsNoTracking()` 是什麼、什麼時候該用 —— 這跟變更追蹤的成本直接相關。
 - 查一下 `dotnet ef migrations script` 能做什麼(提示:正式環境通常不跑 `database update`)。
 
-### Day 11:API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
+### Day 11 ✅:API 設計、RESTful、DTO/驗證 — 加輸入驗證、錯誤處理 middleware
 
 **練習 1:概念暖身(先寫筆記再動手)**
 - **DTO** 是什麼?為什麼不該直接把 `Todo` 當成 API 的輸入與輸出?
@@ -526,6 +526,73 @@
 - 查 OpenAPI:`dotnet new webapi` 預設附的那個東西是什麼,DTO 跟它的關係是什麼。
 - 想一下 API 版本控制:哪天 `TodoResponse` 要改欄位名,已經上線的前端怎麼辦?
 
+### Day 12:身份驗證/授權(JWT)— 加登入與權限保護
+
+**環境設置**
+1. 在 `day8/TodoApi` 裝兩個套件:
+   - `dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer`(驗證 JWT)
+   - `dotnet add package Microsoft.AspNetCore.Identity`(只為了借它的 `PasswordHasher<T>`,不是要用整套 Identity)
+2. 簽章密鑰**絕對不能寫進 `appsettings.json` 推上 GitHub**。用 user secrets:
+   - `dotnet user-secrets init`
+   - `dotnet user-secrets set "Jwt:Key" "<一串至少 32 字元的隨機字串>"`
+   - 想一下:user secrets 存在哪裡?為什麼它不會進版控?
+
+**練習 1:概念暖身(先寫筆記再動手)**
+- **Authentication 跟 Authorization 差在哪?** 對應的 HTTP 狀態碼分別是什麼?(提示:401 和 403 的語意完全不同,而 401 的名字其實取錯了)
+- **JWT 的三個部分**是什麼?為什麼用 `.` 分隔?去 jwt.io 貼一個你等下會產生的 token 進去看。
+- **JWT 不是加密,是簽章。** 把 payload 那段單獨拿出來 base64url 解碼,確認你能讀到裡面的內容。然後回答:**什麼東西絕對不能放進 JWT?**
+- 有了 JWT 為什麼就不需要伺服器端的 session?**代價是什麼?**(提示:想一下「使用者被停權」這件事多快會生效)
+- **為什麼 JWT 很難「登出」?** 業界怎麼處理這個問題?
+- 密碼為什麼不能明文存?**雜湊跟加密差在哪**(哪一個是單向的)?為什麼不能用 MD5 或 SHA256 來雜湊密碼?(提示:查 "password hashing" 跟 "salt"、"work factor")
+
+**練習 2:使用者與密碼雜湊**
+- 建 `User` 實體(`Id`、`Email`、`PasswordHash`、`CreatedAt`),加進 `AppDbContext`,跑 migration。
+- **Email 必須唯一** —— 這題直接用 Day 11 練習 1 題 3 的結論:唯一索引 + 應用層預檢 + 捕捉唯一約束違反例外,三層各自負責什麼?
+- 實作 `POST /auth/register`。**密碼雜湊不要自己寫**,用 `PasswordHasher<User>`。
+- DTO 設計:`RegisterRequest` 該有哪些欄位?**絕對不能有什麼?**(回去看 Day 11 的 over-posting)
+- 註冊成功該回什麼?要不要直接回 token?(兩種做法都有人用,想清楚差別)
+
+**練習 3:登入與發 JWT**
+- 實作 `POST /auth/login`:驗證密碼(`PasswordHasher.VerifyHashedPassword`)→ 產生 JWT。
+- **claims 要放什麼?** 至少需要能識別使用者的那個。查 `ClaimTypes.NameIdentifier` 跟 JWT 標準的 `sub` 有什麼關係(這裡有個 .NET 特有的坑)。
+- 在 `Program.cs` 設定 `AddAuthentication().AddJwtBearer(...)`,把 `Issuer`、`Audience`、`IssuerSigningKey`、`ClockSkew` 都設明確。想一下 `ValidateIssuer` / `ValidateAudience` 各自在防什麼。
+- **登入失敗要回什麼?** 401 還是 400?而且訊息**不能說「密碼錯誤」或「帳號不存在」** —— 為什麼?
+- 把產生的 token 貼到 jwt.io,對照你設定的 claims。
+
+**練習 4:保護端點**
+- 加 `app.UseAuthentication()` 和 `app.UseAuthorization()`。**順序很重要** —— 用 Day 11 學的那套(`Use` 之間有先後、`Map` 位置無關)推一下它們該放哪,以及為什麼 `UseAuthentication` 必須在 `UseAuthorization` 前面。
+- 保護五個 Todo 端點:Minimal API 用 `.RequireAuthorization()`(可以掛在 `MapGroup` 上),Controller 用 `[Authorize]`。
+- 四種失敗情況各測一次,記下**狀態碼和回應格式**:
+  - 完全沒帶 token
+  - token 格式錯(隨便一串字)
+  - 簽章對不上(把 key 改掉再驗)
+  - token 過期(把 `exp` 設成 1 分鐘,等它過期)
+- **401 跟 403 什麼時候各自出現?** 自己製造一次 403 看看。
+- 這些 401 有進到你 Day 11 做的 ProblemDetails 格式嗎?**為什麼?**(提示:回去看「五種錯誤只有一種是例外」那張表)
+
+**練習 5(整合小專案):資料隔離**
+- `Todo` 加 `OwnerId`(指向 `User`),跑 migration。
+- **既有資料怎麼辦?** 資料庫裡已經有沒有 owner 的 Todo —— 這跟 Day 10 加 `CreatedAt` 時的 `defaultValue` 是同一類問題,但這次更嚴重(外鍵約束會拒絕無效的值)。想清楚再動手。
+- 從 JWT 取出使用者 id:`HttpContext.User.FindFirst(...)`。這段邏輯要放哪一層?
+- **所有**查詢都要過濾 `OwnerId` —— 五個端點一個都不能漏。
+- 關鍵設計題:**這會改變 `ITodoRepository` 的介面嗎?** 三個選項(每個方法多一個 `ownerId` 參數 / 介面不變而在 Service 過濾 / 用 EF Core 的 global query filter),各自的代價是什麼?回去看 Day 10 練習 5 關於介面膨脹的結論。
+- 另一個設計題:`GET /todos/{id}` 查到**別人的** Todo 該回 **404 還是 403**?兩種都說得通,選一個並寫下理由。
+- 用兩個帳號交叉測試:A 建立的 Todo,B 拿自己的 token 完全看不到也改不動。
+
+**驗收標準**
+- 密碼在資料庫裡是雜湊值,而且同一個密碼註冊兩次會得到**不同**的雜湊(說明為什麼)。
+- 沒帶 token 打任何 Todo 端點都回 401,兩套端點(Minimal API / Controller)行為一致。
+- 能解釋 JWT 的三個部分、為什麼它不需要 session、以及「登出」為什麼是個難題。
+- 能說明 401 和 403 的差別,並各自製造一次。
+- A 帳號的 Todo 對 B 帳號完全不可見、不可改 —— 五個端點都驗證過。
+- 簽章密鑰不在版控裡(`git log -p` 搜不到)。
+
+**延伸**
+- 查 **refresh token**:為什麼需要它?access token 為什麼要設短效期?
+- 查 **role-based** 跟 **policy-based** 授權的差別,試著做一個 `[Authorize(Policy = "...")]`。
+- 想一下:**為什麼 JWT 必須搭配 HTTPS?** 不用的話會發生什麼?
+- 查 token 該存在前端哪裡(localStorage / sessionStorage / httpOnly cookie),各自對 XSS 和 CSRF 的暴露程度 —— 這題沒有完美答案,重點是理解取捨。
+
 ## 調整紀錄
 > 之後每次討論學習狀況時,在這裡加一筆日期 + 調整內容,方便回顧課表怎麼演變。
 
@@ -542,3 +609,4 @@
 - 2026-10-08:Day 8 完成(練習 1~5)。Minimal API 基礎:參數綁定的判斷順序(簡單型別看型別有沒有 `TryParse`、複雜型別落到 body、DI 服務從容器取)、`IResult` 的 `ExecuteAsync` 才是真正寫入回應的地方(自己實作一個 20 行的 `IResult` 行為與 `Results.Ok` 完全相同)、middleware pipeline 的洋蔥進出實測、`CreateBuilder` 預設註冊 111 個服務。Todo CRUD 五個端點狀態碼驗收全對(201 + `Location`、204、404),並實測冪等性:`POST` 兩次建出兩筆不同 id、`PUT` 三次結果完全相同;另確認「有 id」不是冪等的原因,關鍵在操作是「設定絕對值」還是「在現值上做變化」。DI 三種生命週期實測:同一請求內 Singleton/Scoped 相同、Transient 不同,跨請求只有 Singleton 相同。踩到 Singleton + `List<T>` 的執行緒安全問題:200 個並行 POST 掉 4 筆資料而且**沒有任何例外**;`Update`/`Delete` 把 `FindIndex` 寫在 lock 外造成 14 次 `NullReferenceException`(TOCTOU),改成查詢與寫入同在一個 lock、`GetAll` 回傳鎖內複製的快照後解決。確認 captive dependency:Singleton 注入 Scoped 會在 `Build()` 階段直接拋例外 —— Day 10 把 `TodoService` 改成 Scoped 之後,這些 lock 就不再需要。筆記在 `day8/TodoApi/notes.md`。
 - 2026-10-11:Day 9 完成(練習 1~5)。**在 `day8/TodoApi` 上原地重構,沒有另開專案**,筆記在 `day8/TodoApi/notes-day9.md`。把 Day 8 那個同時扮演「業務規則」與「資料存取」的 `TodoService` 拆成 Endpoint / Service / Repository 三層,`Program.cs` 從 132 行縮到 8 行執行程式碼。最重要的觀念修正是「**依賴方向 ≠ 呼叫順序**」:呼叫是雙向的(請求往下、資料往上回),依賴是單向的,看的是「誰的程式碼裡提到誰的型別」;反過來讓 Repository 依賴 Service 會被 DI 容器直接拒絕(`A circular dependency was detected`)。驗收時掃過 Repository 的程式碼,裡面找不到任何 `ITodoService` 字樣 —— 低層完全不知道高層存在。介面設計修掉兩個洩漏:`ITodoRepository` 原本收 `CreateTodoRequest`(那是 API 層的輸入格式)改成只收領域模型 `Todo`,`Guid.CreateVersion7()` 從 Repository 搬回 Service(「Id 怎麼來」是業務規則,不是儲存細節)。練習 4 用 `readonly record struct` 實作 Result pattern,解決「`bool` 分不出該回 404 還是 400」;同時確認**不是每個方法都該包 Result** —— `GetAll` 不會失敗、`GetById` 用 `Todo?` 就表達完整,只有失敗原因超過一種時才需要。練習 5 寫 `FileTodoRepository` 時把整條鏈改成 async(async 會傳染),踩到兩件事:`lock` 區塊內不能 `await`(error CS1996,因為 `Monitor` 必須由同一條執行緒進出,而 `await` 後可能換執行緒),async 世界要用 `SemaphoreSlim(1,1)` 配 `try`/`finally`,而且它**不可重入**,私有輔助方法一律不能再取鎖;另外釐清「只是轉手就不要 async」的例外 —— 有 `try`/`catch` 或 `using` 時必須 `await`,否則例外被包在 Task 裡攔不到、或資源在 Task 跑完前就被釋放。最終驗證:切換 `InMemoryTodoRepository` ↔ `FileTodoRepository` **只改一行註冊**,上面兩層一個字都沒動,重啟後資料還在。過程中踩到的坑:搬運時 `UpdateTodo` 漏掉 lock、`ITodoRepository` 忘了註冊(DI 的接線錯誤編譯不會擋,要到執行期第一次請求才爆)。
 - 2026-10-16:Day 10 完成(練習 1~5 + 延伸)。**同樣在 `day8/TodoApi` 上原地接資料庫**,筆記在 `day8/TodoApi/notes-day10.md`。Docker 跑 PostgreSQL,`AddDbContext` 一行實測註冊了 5 個服務(`AppDbContext` 是 Scoped);釐清 `where TContext : DbContext` 是泛型約束、`DbSet<Todo> Todos => Set<Todo>()` 是 expression-bodied member(所以沒有未初始化警告 —— 計算屬性沒有欄位),而編譯器對 DbContext 的 `DbSet` 自動屬性另有特例(不報 CS8618)。**Migration 的三個組成部分**:migration 檔案(`Up`/`Down`)、snapshot(「模型目前長什麼樣」)、資料庫裡的 `__EFMigrationsHistory`(「這台資料庫跑到哪」);`migrations add` 只比對模型與 snapshot、完全不碰資料庫,`database update` 只比對檔案清單與 history 表、完全不看 C# 模型 —— 這一天踩的每個坑都是這兩條軸不同步的後果。踩到的坑依序是:`CreatedAt { get; }` 沒有 setter 又不在建構子參數裡,EF Core 直接不納入模型,於是 `migrations add` 產生**空的 `Up()`**(而且 `database update` 會成功、會記進 history 表、資料庫什麼都沒變);跳過 `database update` 就打端點拿到 `42703 column does not exist`(模型推進了但 schema 沒);`DateTime.Now` 寫進 `timestamptz` 被 Npgsql 擋下(`Kind` 必須是 `Utc`),而且這個錯誤只在**執行期第一次寫入**才爆,`migrations add` / `database update` 都不會提前發現。回滾實驗驗證了 `Down()` 的真正代價:`DropColumn` 之後再 `Up()` 回來,同一筆資料的 `Id`/`Title` 活著、`CreatedAt` 變成 `-infinity`(EF Core 的 `defaultValue: DateTime.MinValue` 經 Npgsql 映射成 PostgreSQL 的特殊值),**schema 可逆、資料不可逆**,而且事後完全看不出那一欄曾經有值。把 `Todo` 從 `record` 改成 class 以配合 change tracking 時,順手把 `Id` 移出建構子,造成 `UpdateAsync(id, request)` 的 `id` 參數完全沒被使用、`Guid.CreateVersion7()` 每次產生新 Id、PUT 永遠回 404 —— 編譯器對未使用的參數沒有警告,屬於全靜默的 bug;修法是把必填的 identity 放回建構子參數,**讓編譯器當守門員**。同一個錯誤模式也出現在 Day 8 自己寫的 `IGuidService`:`{ get; } = Guid.CreateVersion7()` 配 Singleton 註冊 → 整個程式生命週期只算一次 → 永遠同一個 Guid(實測 `new Todo()` 三次得到三個不同 Guid、Singleton 的 `svc.Id` 讀三次完全相同,證明兩者差別在「new 幾次」而不是 initializer 行為)。`EfTodoRepository` 寫完後抓到 `FirstAsync` 的語意:找不到時**丟 `InvalidOperationException` 而不是回傳 null**,導致 `if (todo != null)` 恆真、`return false` 成為死碼、三個方法的 404 路徑全部變成 500,而 `dotnet build` 零警告;換成 `FirstOrDefaultAsync` 後修復,並記下 `First`/`FirstOrDefault`/`Single`/`SingleOrDefault` 四者的對稱語意。另一個行為差異是 `GetAllAsync` 沒有 `ORDER BY` —— PostgreSQL 不保證回傳順序,而 `InMemory`/`File` 版是穩定的插入順序,換實作後行為悄悄分岔;因為 Id 是 Guid v7(開頭即時間戳),加 `OrderBy(t => t.Id)` 就取回插入順序。`UpdateAsync` 刻意不用 `db.Update(todo)` 而是「先查出被追蹤的實體再改欄位」,讓 change tracker 只把變更的欄位寫進 `UPDATE` —— 否則整列覆蓋會把 `CreatedAt` 重設成當下時間(又一個靜默失敗)。`lock`/`SemaphoreSlim` 全部拿掉:`DbContext` 是 Scoped、每個請求一個獨立實例,沒有共享狀態可競爭,併發控制下移到資料庫的交易與 MVCC;但要記住 `DbContext` **本身不是執行緒安全**,它不需要鎖是因為 Scoped 保證它不被多執行緒同時碰。練習 5 開 SQL log 做對照實驗(10000 筆):走 Repository 送出 `SELECT` 四個欄位、全表、無 `WHERE` 無 `LIMIT`,92 ms;直接用 `DbSet` 送出 `SELECT "Title"` + `WHERE NOT "IsDone"` + `LIMIT @p`,24 ms —— `ToListAsync()` 就是 `IQueryable`(組 SQL)與 `IEnumerable`(記憶體)的分界線。`AsNoTracking()` 加在 `GetAllAsync`(不加在 `GetByIdAsync`,因為方法名無法表達「結果不可改」,而不被追蹤的實體改了之後 `SaveChanges` 不會有任何反應);實測 `ReferenceEquals` 確認追蹤模式下同一個 Id 查兩次回傳**同一個物件實例**(identity map),`AsNoTracking` 則是兩個獨立物件 —— 也因此追蹤模式下第二次查詢拿不到資料庫的最新值。**Repository 模式的結論(Day 9 延伸題欠的那題)**:寫入走 Repository(封裝業務規則、Result pattern、交易邊界),複雜查詢直接用 `DbContext` —— 也就是分讀寫;而最重要的體會是「**可替換性與查詢能力是同一個取捨的兩面**」:這一天把 Repository 從 `InMemory` → `File` → `EfCore` 換過三次、只改 `Program.cs` 一行註冊、Day 8 寫的 `TodoClient` 測試一字未改全綠,之所以能這麼輕鬆正是因為介面只有五個方法;而介面只有 `GetAllAsync()` 也正是上面那句爛 SQL 的原因 —— 要讓查詢下推到 SQL 介面就得膨脹,膨脹到四十個方法就再也寫不出第二個實作了。延伸題:釐清 **EF Core 預設不會發生 N+1**(預設關閉 lazy loading,要主動裝 `Proxies` 套件 + `UseLazyLoadingProxies()` + `virtual` 導覽屬性才會),真正的來源是自己手寫的迴圈(Day 11 做 DTO 轉換時最容易踩),而 `Include` 自己帶來笛卡爾爆炸的風險、`AsSplitQuery()` 是第三種取捨;`dotnet ef migrations script --idempotent` 實際跑過兩次,看到每個 migration 被包在獨立交易裡、schema 變更與 history 記錄同進同退(PostgreSQL 支援交易式 DDL 才辦得到),以及正式環境不跑 `database update` 的關鍵理由 —— 它需要載入專案 assembly,而生產環境沒有原始碼和 SDK。最後釐清 Fluent API:`HasKey(t => t.Id)` 和 `Property(t => t.Title).IsRequired()` 都是 no-op(convention 已經做到,證據是 `InitialCreate` 在 `OnModelCreating` 寫出來之前就已經產生了正確的主鍵與 `NOT NULL`),`HasDefaultValue()` 無參數版本等於 CLR 預設值也就是 `-infinity`,而 `HasDefaultValueSql("now()")` 在 C# 端仍有 `= DateTime.UtcNow` initializer 的情況下**永遠不會生效**(SQL 的 DEFAULT 只在 INSERT 省略該欄時才套用)—— 真正需要資料庫預設值的場景是「寫入來源不只應用程式」「需要單一時間來源」「migration 回填既有資料」。
+- 2026-10-20:Day 11 完成(練習 1~5 + 延伸)。**繼續在 `day8/TodoApi` 上做**,筆記在 `day8/TodoApi/notes-day11.md`(527 行,是目前最長的一份)。主線是把對外的契約邊界關起來 —— Day 9 關的是內部的層次邊界(API 輸入格式不該滲進 Repository),Day 11 關的是反方向(領域模型不該滲出去給前端),是同一個原則的兩個方向。拆出 `TodoResponse` 之後最重要的判斷是「**轉換該放哪一層**」:一開始用消去法選了 Service(端點管 HTTP、Repository 管存取、所以剩 Service),但那個推理的漏洞是**轉換 DTO 本身就是 HTTP 層的工作** —— `TodoResponse` 存在的唯一理由是「HTTP 客戶端要看到什麼」。若讓 `ITodoService` 回傳 `Result<TodoResponse>`,代價有三:Service 再也不能服務 gRPC/CLI/背景作業、`CreateAsync` 在 `await` 之後想做事(寄通知、audit log 需要 `CreatedAt`)時已經資訊損失、Day 13 寫測試時斷言的會是 API 格式而非領域行為。最後用 Day 1 學的擴充方法 `ToResponse()` 同時滿足四件事:Service 不碰 API 格式、轉換只有一份、兩套端點共用、`TodoResponse` 與 mapping 都住在 API 層。DTO 的另一個價值是**白名單**:加 `InternalNote` 不會洩漏,因為 `TodoResponse` 裡沒有那個欄位 —— 對照 Day 10 加 `CreatedAt` 時它**自動**出現在所有回應裡(當時沒有白名單),而靠 `private` 或 `[JsonIgnore]` 隱藏是黑名單思維(預設公開、靠記得標注)。驗證這一題挖出最多反直覺的機制:**Minimal API 沒有「模型驗證」這個 pipeline 階段**(MVC 是 綁定→驗證→`[ApiController]` 檢查 ModelState→action,Minimal API 只有 綁定→handler),所以 Data Annotations 被完全忽略,實測同一個空 Title 在 `/api/todos` 被 `ValidationProblemDetails` 擋下、在 `/todos` 卻一路跑到 Service 才被 `IsNullOrWhiteSpace` 攔住 —— 而且 `request.Title` 在那裡**真的是 null**,儘管宣告是 non-nullable `string`(`System.Text.Json` 完全不看 nullable 註記,這也正是「為什麼需要驗證層」的根本答案:型別系統的承諾在反序列化邊界守不住)。解法是 .NET 10 的 `AddValidation()`,它用 **endpoint filter** 實作所以不需要配 `app.UseXxx()`。另一個發現是**沒寫 `[Required]` 也會擋空值** —— nullable reference types 啟用後,ASP.NET Core 把 non-nullable `string` 隱式當成必填(所以 Controller 從 Day 9 寫完那天就有驗證了,只是一直沒送空值去測);而 `RequiredAttribute` 內部會先 `Trim()` 再檢查,行為跟 `IsNullOrWhiteSpace` 完全一樣,但它不管長度。踩到的最大認知坑是 **`[Required]` 加在 `bool` 上完全無效**(`RequiredAttribute` 檢查的是「是不是 null」,而 value type 永遠不是 null),要讓布林值真正必填必須先讓它**能夠**是 null → `[Required] bool?`。這條線往下挖出一個更根本的事實:**實值型別無法分辨「沒傳」和「傳了預設值」** —— 精確的機制不是綁定器主動填 default,而是**它根本沒碰那個屬性**,物件誕生時 CLR 保證記憶體歸零,所以兩種情況的記憶體狀態完全相同、事後看不出差別;`bool?` 能分辨是因為 `Nullable<bool>` 是個 struct、多帶一個 `hasValue` 欄位(`bool` 1 byte、`bool?` 2 bytes)。這直接決定了 PUT 與 PATCH 的 DTO 設計:**同一個 `bool?`,兩個相反的理由** —— PUT 配 `[Required]` 是為了**偵測漏傳並拒絕**(不然客戶端只想改標題卻漏傳 `isDone`,完成狀態會被靜默重設成 false 還回 204 成功),PATCH 不加 required 是為了**用 null 表達「不修改」**。錯誤處理那題先故意把連線字串改錯,親眼看到兩個極端:Development 的開發者例外頁一行就交出「資料庫是 PostgreSQL」「使用者名稱是 postgres」「而且是預設超級使用者」,往下還有完整堆疊和**請求 headers**(使用者的認證 token 會原封不動顯示);Production 則是完全空白的 500,客戶端連個可回報的編號都沒有。正確答案是**同一個例外、兩個去處**:客戶端拿最少資訊 + `traceId`,server log 拿完整堆疊 + 同一個 `traceId`。過程中釐清了三組容易混淆的東西:(1) `ExceptionHandlerMiddleware`(真正的 middleware,`app.UseExceptionHandler()` 加入)vs `IExceptionHandler`(只是個被它呼叫的服務)—— 實測把 `UseExceptionHandler()` 註解掉之後 handler **完全不會被呼叫,連 log 都沒有**;(2) `IExceptionHandler` 的 `bool` 是個契約,`false` 是觀察者(只做副作用,回應交給預設行為,多個 handler 時繼續往下傳 —— 那是責任鏈不是缺點)、`true` 是接管者(**必須自己寫 body**,實測不寫就又變回空白 500);(3) `UseExceptionHandler` 只攔**丟出來的例外**,而 `UseStatusCodePages` 攔的是**狀態碼 4xx/5xx 但 body 空的**回應 —— 整理成「五種錯誤只有一種是例外」的表之後才明白,參數綁定失敗(`/todos/asdf`)、驗證失敗、路由不存在、資料找不到全都是「請求被正常處理、結論是個錯誤狀態碼」,只有資料庫連不上才真的丟例外。另一個推翻直覺的實測是 **`app.Map...` 不是 middleware** —— 它只把路由登記到一個集合,真正執行端點的 `EndpointMiddleware` 由 `WebApplication` 自動加在 pipeline **最後**,所以 `Use` 和 `Map` 的相對順序完全不影響行為,只有 `Use` 彼此之間的順序才重要(用一個會丟例外的 `/boom` middleware 做 A/B 驗證:`UseExceptionHandler` 在前→乾淨的 500,在後→例外穿過它沒人攔)。也確認了 `AddProblemDetails()` 本身不攔任何東西(只註冊 `IProblemDetailsService` 給別人用),以及 **`UseStatusCodePages` 能補格式但補不出內容**(`Results.NotFound()` 補出來的 ProblemDetails 沒有 `detail`,因為 middleware 不知道你想說什麼)—— 最後的分配是 `Invalid` 保留 `detail: result.Error`、`NotFound` 交給 `CustomizeProblemDetails` 的通用訊息,而 `??=` 讓它是**後備而不是取代**。另外學到 `launchSettings.json` 會覆蓋 shell 的環境變數(要 `--no-launch-profile` 才能真的切到 Production),而它**不會進 `dotnet publish` 的產出** —— 所以生產環境是 Production 不是因為有人設定,而是因為 `ASPNETCORE_ENVIRONMENT` 沒設定時預設就是它,Development 反而是本機刻意打開的,又一個失敗安全設計。結構化日誌的佔位符 `{Method}` **靠位置綁定不是靠名字**(調換 template 裡的名字會讓值錯位而編譯器不警告),不能用字串插值是因為 logger 收到的東西不同:插值給的是已壓平的字串,結構化給的是 template + values 分開保存,後者才能讓 `Method`/`Path` 變成可查詢的欄位並按 template 分群(analyzer 規則 `CA2254` 專門抓這件事)。練習 5 加了 `PATCH /todos/{id}/done`,過程中踩到一個跟 Day 10 完全同模式的 bug:`new Todo(id, existing.Title, existing.IsDone)` 把 `request.IsDone` 漏掉了,結果 PATCH 回 204 成功但資料沒變 —— 跟 Day 10 那個「`id` 參數沒用到導致 PUT 永遠 404」都是**建構子參數的來源拿錯**,編譯器無從判斷意圖。也因此體會到「建新物件」雖然比「直接改取出的物件」安全(後者在 EfCore/InMemory/File 三個實作下語意完全不同:靠 change tracking / 靠參考 / 完全不成立),但它把風險從「依賴隱含行為」換成了「每個參數的來源都要寫對」。**DTO 要不要為每個操作各拆一個的結論**:要,而論據不是「語意清楚」而是**四個 DTO 的驗證規則互不相容** —— `CreateTodoRequest` 根本沒有 `IsDone` 欄位(新建必然未完成)、`UpdateTodoRequest` 的 `IsDone` 是 `[Required] bool?`、`SetDoneRequest` 只有一個必填欄位、`TodoResponse` 完全不驗證;若共用一個 DTO,所有欄位都得是 nullable 且不能加 `[Required]`,驗證就會從宣告式**退回命令式的 if 判斷**,而那正是這一天在拆掉的東西(而且退回去的版本更糟:規則散落在 Service 裡、不會出現在 OpenAPI 文件上、客戶端只能用試的)。延伸題釐清 **FluentValidation 跟 EF Core 的 Fluent API 是兩個完全不同的東西**(只有「Fluent」兩字相同,那只是 method chaining 的風格),前者是第三方驗證套件、validator 是普通類別所以**可以注入服務**(而 attribute 是編譯期 metadata 無法注入)—— 但「能注入 Repository 做唯一性檢查」是能力不是建議,那會把資料完整性驗證塞進格式驗證那一層而且帶著 TOCTOU 問題;`[ApiController]` 真正負責的事之一是自動模型驗證(機制是 `ModelStateInvalidFilter` 這個 action filter,在 action **之前**執行,所以驗證失敗時 action 根本不跑、`ResultStatus.Invalid` 分支變成死碼,可用 `SuppressModelStateInvalidFilter` 關掉);OpenAPI 的 schema **直接從 DTO 型別產生而且 Data Annotations 會被寫進去**(`[StringLength(20)]` 會變成 schema 裡的 `maxLength: 20`),所以練習 1 寫的「驗證規則應該出現在 OpenAPI 文件裡讓客戶端送出前就知道」是可以實際驗證的;API 版本控制則是回到 DTO 解耦的價值 —— `TodoResponse` 改欄位名而資料庫的 `Title` 完全不動,那行三行的 `ToResponse()` 就是整個解耦的支點,而判斷破壞性變更的規律是「**放寬安全、收緊破壞;給得多安全、要得多破壞**」。
