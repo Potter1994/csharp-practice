@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     // public DbSet<Todo> Todos { get; set; } // ⚠️ nullable enabled 下會警告「未初始化」
     public DbSet<Todo> Todos => Set<Todo>(); // ✅ 建議這樣寫
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +28,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             // entity.Property(t => t.CreatedAt)
             //     .HasDefaultValueSql("now()");
+        });
+
+        // 配置 User 標
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Email);
+            entity.Property(u => u.PasswordHash).IsRequired();
+
+            // 建立 Email 唯一索引
+            entity.HasIndex(u => u.Email).IsUnique();
         });
     }
 }
