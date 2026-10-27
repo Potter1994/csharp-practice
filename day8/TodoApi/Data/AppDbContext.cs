@@ -23,8 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasKey(todo => todo.Id);
 
             // 配置 Title 欄位
-            entity.Property(t => t.Title)
-                .IsRequired(); // 必填
+            entity.Property(t => t.Title).IsRequired(); // 必填
 
             // entity.Property(t => t.CreatedAt)
             //     .HasDefaultValueSql("now()");
@@ -34,8 +33,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasKey(u => u.Id);
-            entity.Property(u => u.Email);
-            entity.Property(u => u.PasswordHash).IsRequired();
+            entity.Property(u => u.Password).IsRequired();
 
             // 建立 Email 唯一索引
             entity.HasIndex(u => u.Email).IsUnique();

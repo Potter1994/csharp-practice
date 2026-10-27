@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -5,6 +6,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddControllers(); // 試試用 Controller
 
 builder.Services.AddScoped<ITodoService, TodoService>(); // 要改成 Scoped 這樣 service 在引用 EF Core 的時候才不會壞掉
+
 // builder.Services.AddScoped<IGuidService, GuidService>();
 // builder.Services.AddTransient<IGuidService, GuidService>();
 
@@ -12,23 +14,29 @@ builder.Services.AddScoped<ITodoService, TodoService>(); // 要改成 Scoped 這
 // builder.Services.AddSingleton<ITodoRepository, FileTodoRepository>();
 builder.Services.AddScoped<ITodoRepository, EfTodoRepository>();
 
-// Day11 練習三新增 AddValidation() 讓 Minimal API 可以像 MVC 一樣進行 Data Annotations 
+// Day11 練習三新增 AddValidation() 讓 Minimal API 可以像 MVC 一樣進行 Data Annotations
 builder.Services.AddValidation();
+
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserRepository, EfUserRepository>();
+
+// Day12 增加雜湊工具 PasswordHasher
+builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 // Day11 練習四新增 AddProblemDetails 讓 Minimal API 可以像 MVC 一樣回傳 ProblemDetails 格式的錯誤
 builder.Services.AddProblemDetails(options =>
 {
-  // 可以在這邊預設 Detail, 使用 ??= 則是如果沒有設置 Detail 的情況下才去, 不會影響到我有設置的時候
-  options.CustomizeProblemDetails = ctx =>
-  {
-    ctx.ProblemDetails.Detail ??= ctx.ProblemDetails.Status switch
+    // 可以在這邊預設 Detail, 使用 ??= 則是如果沒有設置 Detail 的情況下才去, 不會影響到我有設置的時候
+    options.CustomizeProblemDetails = ctx =>
     {
-      400 => "The request could not be understand. Check the URL and request body.",
-      404 => "The requested resource was not found.",
-      500 => "An unexcepted error occurred.",
-      _ => null,
+        ctx.ProblemDetails.Detail ??= ctx.ProblemDetails.Status switch
+        {
+            400 => "The request could not be understand. Check the URL and request body.",
+            404 => "The requested resource was not found.",
+            500 => "An unexcepted error occurred.",
+            _ => null,
+        };
     };
-  };
 });
 
 // Day11 練習四新增例外處理的 500 error
@@ -42,20 +50,23 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
    Scoped    DbContextOptions
    Scoped    AppDbContext              ← 你問的那個
 */
-var conn = builder.Configuration.GetConnectionString("Default") ?? throw new InvalidOperationException("application.json 缺少 ConnectionString:Default");
+var conn =
+    builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("application.json 缺少 ConnectionString:Default");
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
-  opt.UseNpgsql(conn);
+    opt.UseNpgsql(conn);
 
-  if (builder.Environment.IsDevelopment())
-  {
-    opt.EnableSensitiveDataLogging();
-  }
+    if (builder.Environment.IsDevelopment())
+    {
+        opt.EnableSensitiveDataLogging();
+    }
 });
 var app = builder.Build();
 
 app.UseExceptionHandler(); // 處理「丟出來的例外」 -> 500
 app.UseStatusCodePages(); // 處理「狀態碼是 4xx/5xx 但 body 空的」回應 (只有 body 是空的才會用喔)
+
 /*
 五種錯誤,只有一種是例外
 
@@ -67,14 +78,16 @@ app.UseStatusCodePages(); // 處理「狀態碼是 4xx/5xx 但 body 空的」回
 500   資料庫連不上	              真的丟了例外	✅
 */
 
-app.Use(async (context, next) =>
-{
-  if (context.Request.Path == "/boom")
-  {
-    throw new InvalidOperationException("測試用的爆炸");
-  }
-  await next();
-});
+app.Use(
+    async (context, next) =>
+    {
+        if (context.Request.Path == "/boom")
+        {
+            throw new InvalidOperationException("測試用的爆炸");
+        }
+        await next();
+    }
+);
 
 /* 如果 middleware 是這個順序: 打 /boom → 例外往上穿過 UseExceptionHandler,沒人攔(Production 下又變成空白 500)❌
 app.Use(...那個會爆的...);
@@ -91,8 +104,10 @@ app.MapControllers();        // 位置無關,端點永遠最內層
 
 app.MapOpenApi();
 app.MapControllers();
+
 // app.MapDemoEndpoints();
 app.MapTodoEndpoints();
+app.MapUserEndpoints();
 
 /*
 **練習 5(整合小專案):看見 EF Core 真正送出的 SQL**
@@ -118,7 +133,7 @@ app.MapTodoEndpoints();
       LIMIT @p
 
   - 比較兩者送出的 SQL 有什麼不同,資料量大時差在哪。
-    A 則是拿回了全部, 在程式端執行剩下的 LINQ 
+    A 則是拿回了全部, 在程式端執行剩下的 LINQ
     而 B 所有的查詢、篩選、Select 都直接在 SQL 那邊就做完了
 
 - 寫下你對「EF Core 上面要不要再包 Repository」的看法(Day 9 延伸題欠的那題)。
@@ -127,41 +142,55 @@ app.MapTodoEndpoints();
     3. 讓 Repository 回傳 IQueryable<T> —— 效能問題消失,但抽象完全漏光:上層現在直接依賴 EF Core 的查詢語意,InMemoryTodoRepository 再也不可能正確實作它。這等於承認「我只是想要一個命名空間」
     4. 分讀寫 —— 寫入走 Repository(需要封裝業務規則、Result pattern、交易邊界),查詢直接用 DbContext 或 Dapper(需要效能和彈性)。這是現在最主流的務實答案,也是 CQRS 的輕量版
 */
-app.MapGet("/repository-test", async (ITodoRepository repo) =>
-{
-  var todos = await repo.GetAllAsync();
-  var result = todos.Where(t => !t.IsDone).Select(t => t.Title).Take(10);
-  return Results.Ok(result);
-});
+app.MapGet(
+    "/repository-test",
+    async (ITodoRepository repo) =>
+    {
+        var todos = await repo.GetAllAsync();
+        var result = todos.Where(t => !t.IsDone).Select(t => t.Title).Take(10);
+        return Results.Ok(result);
+    }
+);
 
-app.MapGet("/db-test", async (AppDbContext db) =>
-{
-  // 這裡需要 ToListAsync() 是因為 DbContext 在序列化前就隨請求結束被釋放,你會拿到 ObjectDisposedException
-  // 這是 ASP.NET Core + EF Core 的經典 bug 補一個 .ToList() or .ToListAsync() 就能永遠避開。
-  var result = await db.Todos.Where(t => !t.IsDone).Select(t => t.Title).Take(10).ToListAsync();
-  return Results.Ok(result);
-});
+app.MapGet(
+    "/db-test",
+    async (AppDbContext db) =>
+    {
+        // 這裡需要 ToListAsync() 是因為 DbContext 在序列化前就隨請求結束被釋放,你會拿到 ObjectDisposedException
+        // 這是 ASP.NET Core + EF Core 的經典 bug 補一個 .ToList() or .ToListAsync() 就能永遠避開。
+        var result = await db
+            .Todos.Where(t => !t.IsDone)
+            .Select(t => t.Title)
+            .Take(10)
+            .ToListAsync();
+        return Results.Ok(result);
+    }
+);
 
-app.MapGet("/identity-test", async (AppDbContext db) =>
-{
-  Guid id = (await db.Todos.AsNoTracking().FirstAsync()).Id;
+app.MapGet(
+    "/identity-test",
+    async (AppDbContext db) =>
+    {
+        Guid id = (await db.Todos.AsNoTracking().FirstAsync()).Id;
 
-  var a1 = await db.Todos.FirstOrDefaultAsync(t => t.Id == id);
-  var a2 = await db.Todos.FirstOrDefaultAsync(t => t.Id == id);
+        var a1 = await db.Todos.FirstOrDefaultAsync(t => t.Id == id);
+        var a2 = await db.Todos.FirstOrDefaultAsync(t => t.Id == id);
 
-  var b1 = await db.Todos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
-  var b2 = await db.Todos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+        var b1 = await db.Todos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+        var b2 = await db.Todos.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
 
-  return Results.Ok(new
-  {
-    追蹤模式_同一個物件 = ReferenceEquals(a1, a2),
-    不追蹤_同一個物件 = ReferenceEquals(b1, b2),
-    追蹤模式查到幾個實體 = db.ChangeTracker.Entries<Todo>().Count(),
-  });
-});
+        return Results.Ok(
+            new
+            {
+                追蹤模式_同一個物件 = ReferenceEquals(a1, a2),
+                不追蹤_同一個物件 = ReferenceEquals(b1, b2),
+                追蹤模式查到幾個實體 = db.ChangeTracker.Entries<Todo>().Count(),
+            }
+        );
+    }
+);
 
 app.Run();
-
 
 
 /*
