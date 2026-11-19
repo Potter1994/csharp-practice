@@ -1,7 +1,21 @@
 using Microsoft.AspNetCore.Identity;
 
-public class UserService(IUserRepository repo, IPasswordHasher<User> hasher) : IUserService
+public class UserService(
+    IUserRepository repo,
+    IPasswordHasher<User> hasher,
+    ITokenService jwtTokenService
+) : IUserService
 {
+    // 真的是 HashPassword 產生的字串才會讓他一路走到 PBKDF2
+    // 如果哪天雜湊更新了, 這個值也必須更新
+    private static readonly string FakePassword =
+        "AQAAAAIAAYagAAAAENFf53ab5Y9BbJC3qzuNQ0rL5Ai1Bgti/KPz58AsmEFcZDkYi8EY5rQPx1480cnqCw==";
+    private static readonly User FakeUser = new()
+    {
+        Email = "fakeMail@example.com",
+        Password = "abc123",
+    };
+
     public async Task<Result<User>> Register(RegisterRequestDto request)
     {
         const string DuplicateEmail = "此 Email 已經註冊";
@@ -30,5 +44,17 @@ public class UserService(IUserRepository repo, IPasswordHasher<User> hasher) : I
         if (result is null)
             return Result<User>.NotFound("此 Email 尚未註冊");
         return Result<User>.Ok(result);
+    }
+
+    public async Task<Result<AccessToken>> Login(LoginRequestDto request)
+    {
+        var user = await repo.GetByEmailAsync(request.Email.Trim().ToLowerInvariant());
+        var hash = user?.Password ?? FakePassword;
+        var result = hasher.VerifyHashedPassword(user ?? FakeUser, hash, request.Password);
+
+        if (user is null || result == PasswordVerificationResult.Failed)
+            return Result<AccessToken>.Unauthorized("Email 或密碼錯誤");
+
+        return Result<AccessToken>.Ok(jwtTokenService.Create(user));
     }
 }

@@ -50,5 +50,21 @@ public static class UserEndpoints
                 };
             }
         );
+        group.MapPost(
+            "/login",
+            async (LoginRequestDto request, IUserService service) =>
+            {
+                var result = await service.Login(request);
+                return result.Status switch
+                {
+                    ResultStatus.Success => Results.Ok(result.Value),
+                    ResultStatus.Unauthorized => Results.Problem(
+                        detail: result.Error,
+                        statusCode: StatusCodes.Status401Unauthorized
+                    ),
+                    _ => Results.Problem(),
+                };
+            }
+        );
     }
 }

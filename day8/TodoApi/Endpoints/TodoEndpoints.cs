@@ -15,7 +15,7 @@ Day 8
 - 用 `Results.Ok()` / `Results.Created()` / `Results.NotFound()` / `Results.NoContent()` / `Results.BadRequest()`。
 - 對照 Day 6 寫的冪等性筆記:驗證 `PUT` 同一筆打兩次結果相同、`POST` 打兩
 
-搭配 Day 9 
+搭配 Day 9
 **練習 3:端點搬出 `Program.cs`**
 - 寫一個擴充方法 `public static void MapTodoEndpoints(this WebApplication app)`,把五個端點搬進去(放在 `Endpoints/TodoEndpoints.cs`)。
 - 用 `app.MapGroup("/todos")` 收斂共同前綴,端點路徑只剩 `""` 和 `"/{id}"`。
@@ -23,103 +23,153 @@ Day 8
 
 */
 
+using System.IdentityModel.Tokens.Jwt;
+
 public static class TodoEndpoints
 {
     // 我沒改, 讓自己下次能看懂在說什麼
     // 這邊的 WebApplication 如果改成介面當參數: IEndpointRouteBuilder
     // 這樣底下的 MapGroup 之後的也能直接使用這邊舉例的 MapTodoEndpoints
     // 因為 IEndpointRouteBuilder 跟 WebApplication 都有實作介面 IEndpointRouteBuilder
-    internal static void MapTodoEndpoints(this WebApplication /*IEndpointRouteBuilder*/ app)
+    internal static void MapTodoEndpoints(
+        this WebApplication /*IEndpointRouteBuilder*/
+        app
+    )
     {
         // - 用 `app.MapGroup("/todos")` 收斂共同前綴,端點路徑只剩 `""` 和 `"/{id}"`。
         RouteGroupBuilder group = app.MapGroup("/todos");
 
-        group.MapGet("", async (ITodoService service) => Results.Ok((await service.GetAllAsync()).Select(t => t.ToResponse())));
+        group.RequireAuthorization();
 
-        group.MapGet("/{id}", async (Guid id, ITodoService service) =>
-        {
-            var result = await service.GetByIdAsync(id);
-            if (result == null)
-                // 我在 Program.cs 有預設 404 回傳的 detail 了, 就統一使用一樣的回傳訊息就好
-                // return Results.Problem(detail: "Todo is Not Found", statusCode: StatusCodes.Status404NotFound);
-                return Results.Problem(statusCode: StatusCodes.Status404NotFound);
-
-            return Results.Ok(result.ToResponse());
-        });
-
-        group.MapPost("", async (CreateTodoRequest request, ITodoService service) =>
-        {
-            // if (string.IsNullOrWhiteSpace(request.Title))
-            // {
-            //     return Results.BadRequest(new { message = "Title is required." });
-            // }
-
-            Result<Todo> result = await service.CreateAsync(request);
-
-            return result.Status switch
+        group.MapGet(
+            "",
+            async (ITodoService service) =>
             {
-                ResultStatus.Success => Results.Created($"/todos/{result.Value?.Id}", result.Value?.ToResponse()),
-                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
-                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
-                _ => Results.Problem(),
-            };
+                return Results.Ok((await service.GetAllAsync()).Select(t => t.ToResponse()));
+            }
+        );
 
-            // if (result.Status == ResultStatus.Invalid)
-            // {
-            //     return Results.BadRequest(new { message = result.Error });
-            // }
+        group
+            .MapGet(
+                "/{id}",
+                async (Guid id, ITodoService service) =>
+                {
+                    var result = await service.GetByIdAsync(id);
+                    if (result == null)
+                        // 我在 Program.cs 有預設 404 回傳的 detail 了, 就統一使用一樣的回傳訊息就好
+                        // return Results.Problem(detail: "Todo is Not Found", statusCode: StatusCodes.Status404NotFound);
+                        return Results.Problem(statusCode: StatusCodes.Status404NotFound);
 
-            // 這邊需要特地寫一個不必要的判斷 && newTodo is not null
-            // 需要自己額外防守, Result Pattern 就是為了解決這個
-            // if (result == ResultStatus.Success && newTodo is not null)
-            // {
-            //     return Results.Created($"/todos/{newTodo.Id}", newTodo);
-            // }
+                    return Results.Ok(result.ToResponse());
+                }
+            )
+            .RequireAuthorization(p =>
+                p.RequireClaim(JwtRegisteredClaimNames.Email, "test1@gmail.com")
+            );
 
-        });
-
-        group.MapPut("/{id}", async (Guid id, UpdateTodoRequest request, ITodoService service) =>
-        {
-            // 改成用 Result Pattern 來處理
-            var result = await service.UpdateAsync(id, request);
-            return result.Status switch
+        group.MapPost(
+            "",
+            async (CreateTodoRequest request, ITodoService service) =>
             {
-                ResultStatus.Success => Results.NoContent(),
-                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
-                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
-                _ => Results.Problem()
-            };
-        });
+                // if (string.IsNullOrWhiteSpace(request.Title))
+                // {
+                //     return Results.BadRequest(new { message = "Title is required." });
+                // }
 
-        group.MapPatch("/{id}/done", async (Guid id, SetDoneRequest request, ITodoService service) =>
-        {
-            var result = await service.PatchAsync(id, request);
-            return result.Status switch
+                Result<Todo> result = await service.CreateAsync(request);
+
+                return result.Status switch
+                {
+                    ResultStatus.Success => Results.Created(
+                        $"/todos/{result.Value?.Id}",
+                        result.Value?.ToResponse()
+                    ),
+                    ResultStatus.Invalid => Results.Problem(
+                        detail: result.Error,
+                        statusCode: StatusCodes.Status400BadRequest
+                    ),
+                    ResultStatus.NotFound => Results.Problem(
+                        statusCode: StatusCodes.Status404NotFound
+                    ),
+                    _ => Results.Problem(),
+                };
+
+                // if (result.Status == ResultStatus.Invalid)
+                // {
+                //     return Results.BadRequest(new { message = result.Error });
+                // }
+
+                // 這邊需要特地寫一個不必要的判斷 && newTodo is not null
+                // 需要自己額外防守, Result Pattern 就是為了解決這個
+                // if (result == ResultStatus.Success && newTodo is not null)
+                // {
+                //     return Results.Created($"/todos/{newTodo.Id}", newTodo);
+                // }
+            }
+        );
+
+        group.MapPut(
+            "/{id}",
+            async (Guid id, UpdateTodoRequest request, ITodoService service) =>
             {
-                ResultStatus.Success => Results.NoContent(),
-                ResultStatus.Invalid => Results.Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
-                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
-                _ => Results.Problem(),
-            };
-        });
+                // 改成用 Result Pattern 來處理
+                var result = await service.UpdateAsync(id, request);
+                return result.Status switch
+                {
+                    ResultStatus.Success => Results.NoContent(),
+                    ResultStatus.Invalid => Results.Problem(
+                        detail: result.Error,
+                        statusCode: StatusCodes.Status400BadRequest
+                    ),
+                    ResultStatus.NotFound => Results.Problem(
+                        statusCode: StatusCodes.Status404NotFound
+                    ),
+                    _ => Results.Problem(),
+                };
+            }
+        );
 
-        group.MapDelete("/{id}", async (Guid id, ITodoService service) =>
-        {
-            var result = await service.DeleteAsync(id);
-
-            return result.Status switch
+        group.MapPatch(
+            "/{id}/done",
+            async (Guid id, SetDoneRequest request, ITodoService service) =>
             {
-                ResultStatus.Success => Results.NoContent(),
-                ResultStatus.NotFound => Results.Problem(statusCode: StatusCodes.Status404NotFound),
-                _ => Results.Problem(),
-            };
-            // if (result.Status == ResultStatus.NotFound)
-            // {
-            //     return Results.NotFound(new { message = "Todo id is not found." });
-            // }
+                var result = await service.PatchAsync(id, request);
+                return result.Status switch
+                {
+                    ResultStatus.Success => Results.NoContent(),
+                    ResultStatus.Invalid => Results.Problem(
+                        detail: result.Error,
+                        statusCode: StatusCodes.Status400BadRequest
+                    ),
+                    ResultStatus.NotFound => Results.Problem(
+                        statusCode: StatusCodes.Status404NotFound
+                    ),
+                    _ => Results.Problem(),
+                };
+            }
+        );
 
-            // return Results.NoContent();
-        });
+        group.MapDelete(
+            "/{id}",
+            async (Guid id, ITodoService service) =>
+            {
+                var result = await service.DeleteAsync(id);
+
+                return result.Status switch
+                {
+                    ResultStatus.Success => Results.NoContent(),
+                    ResultStatus.NotFound => Results.Problem(
+                        statusCode: StatusCodes.Status404NotFound
+                    ),
+                    _ => Results.Problem(),
+                };
+                // if (result.Status == ResultStatus.NotFound)
+                // {
+                //     return Results.NotFound(new { message = "Todo id is not found." });
+                // }
+
+                // return Results.NoContent();
+            }
+        );
     }
-
 }

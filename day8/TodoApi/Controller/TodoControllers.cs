@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("/api/todos")] // 用 /api/todos 避開 Minimal API 的 /todos
+[Authorize]
 public class TodoController(ITodoService service) : ControllerBase
 {
     [HttpGet] // GET /api/todos
@@ -15,7 +17,9 @@ public class TodoController(ITodoService service) : ControllerBase
     public async Task<IActionResult> GetById(Guid id)
     {
         var todo = await service.GetByIdAsync(id);
-        return todo is null ? Problem(statusCode: StatusCodes.Status404NotFound) : Ok(todo.ToResponse());
+        return todo is null
+            ? Problem(statusCode: StatusCodes.Status404NotFound)
+            : Ok(todo.ToResponse());
     }
 
     [HttpPost]
@@ -24,11 +28,19 @@ public class TodoController(ITodoService service) : ControllerBase
         var result = await service.CreateAsync(request);
         return result.Status switch
         {
-            ResultStatus.Success => CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value!.ToResponse()),
-            ResultStatus.Invalid => Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            ResultStatus.Success => CreatedAtAction(
+                nameof(GetById),
+                new { id = result.Value!.Id },
+                result.Value!.ToResponse()
+            ),
+            ResultStatus.Invalid => Problem(
+                detail: result.Error,
+                statusCode: StatusCodes.Status400BadRequest
+            ),
             _ => Problem(),
         };
     }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, UpdateTodoRequest request)
     {
@@ -36,11 +48,15 @@ public class TodoController(ITodoService service) : ControllerBase
         return result.Status switch
         {
             ResultStatus.Success => NoContent(),
-            ResultStatus.Invalid => Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            ResultStatus.Invalid => Problem(
+                detail: result.Error,
+                statusCode: StatusCodes.Status400BadRequest
+            ),
             ResultStatus.NotFound => Problem(statusCode: StatusCodes.Status404NotFound),
             _ => Problem(),
         };
     }
+
     [HttpPatch("{id}/done")]
     public async Task<IActionResult> Patch(Guid id, SetDoneRequest request)
     {
@@ -48,11 +64,15 @@ public class TodoController(ITodoService service) : ControllerBase
         return result.Status switch
         {
             ResultStatus.Success => NoContent(),
-            ResultStatus.Invalid => Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            ResultStatus.Invalid => Problem(
+                detail: result.Error,
+                statusCode: StatusCodes.Status400BadRequest
+            ),
             ResultStatus.NotFound => Problem(statusCode: StatusCodes.Status404NotFound),
             _ => Problem(),
         };
     }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
@@ -60,7 +80,10 @@ public class TodoController(ITodoService service) : ControllerBase
         return result.Status switch
         {
             ResultStatus.Success => NoContent(),
-            ResultStatus.Invalid => Problem(detail: result.Error, statusCode: StatusCodes.Status400BadRequest),
+            ResultStatus.Invalid => Problem(
+                detail: result.Error,
+                statusCode: StatusCodes.Status400BadRequest
+            ),
             ResultStatus.NotFound => Problem(statusCode: StatusCodes.Status404NotFound),
             _ => Problem(),
         };

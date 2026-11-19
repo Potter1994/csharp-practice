@@ -4,6 +4,7 @@ public enum ResultStatus
     Success,
     NotFound,
     Conflict,
+    Unauthorized,
 };
 
 public readonly record struct Result<T>
@@ -24,6 +25,9 @@ public readonly record struct Result<T>
     public static Result<T> Invalid(string error) => new(ResultStatus.Invalid, default, error);
 
     public static Result<T> Conflict(string error) => new(ResultStatus.Conflict, default, error);
+
+    public static Result<T> Unauthorized(string error) =>
+        new(ResultStatus.Unauthorized, default, error);
 }
 
 public readonly record struct Result(ResultStatus Status, string? Error = null)
@@ -35,4 +39,6 @@ public readonly record struct Result(ResultStatus Status, string? Error = null)
     public static Result Invalid(string error) => new(ResultStatus.Invalid, error);
 
     public static Result Conflict(string error) => new(ResultStatus.Conflict, error);
+
+    public static Result Unauthorized(string error) => new(ResultStatus.Unauthorized, error);
 }

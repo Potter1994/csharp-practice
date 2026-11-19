@@ -555,7 +555,7 @@
 **練習 3:登入與發 JWT**
 - 實作 `POST /auth/login`:驗證密碼(`PasswordHasher.VerifyHashedPassword`)→ 產生 JWT。
 - **claims 要放什麼?** 至少需要能識別使用者的那個。查 `ClaimTypes.NameIdentifier` 跟 JWT 標準的 `sub` 有什麼關係(這裡有個 .NET 特有的坑)。
-- 在 `Program.cs` 設定 `AddAuthentication().AddJwtBearer(...)`,把 `Issuer`、`Audience`、`IssuerSigningKey`、`ClockSkew` 都設明確。想一下 `ValidateIssuer` / `ValidateAudience` 各自在防什麼。
+  - 在 `Program.cs` 設定 `AddAuthentication().AddJwtBearer(...)`,把 `Issuer`、`Audience`、`IssuerSigningKey`、`ClockSkew` 都設明確。想一下 `ValidateIssuer` / `ValidateAudience` 各自在防什麼。
 - **登入失敗要回什麼?** 401 還是 400?而且訊息**不能說「密碼錯誤」或「帳號不存在」** —— 為什麼?
 - 把產生的 token 貼到 jwt.io,對照你設定的 claims。
 

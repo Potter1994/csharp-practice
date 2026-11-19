@@ -93,3 +93,111 @@
     PBKDF2             支援廣泛，常用於有特定合規需求的環境
     bcrypt             歷史悠久，許多既有系統仍在使用
     SHA-256 / MD5      不應直接用於密碼儲存
+
+**練習 2:使用者與密碼雜湊**
+- **Email 必須唯一** —— 這題直接用 Day 11 練習 1 題 3 的結論:唯一索引 + 應用層預檢 + 捕捉唯一約束違反例外,三層各自負責什麼?
+    - 唯一索引: 在 database 層, 它不依賴任何程式碼路徑 (唯一真正保證正確性的那一層)
+    - 應用層預檢: 在 Service 先用 SELECT 查一次 email 在不在, 在就不送 INSERT
+        - 絕大多數請求是正常註冊,而預檢讓那條路慢了一倍。 所以第二層的價值不是效能 —— 它省掉的是「失敗的 INSERT」,而那本來就是少數情況。
+        - 預檢不是為了正確性(索引負責),也不是為了效能(它反而讓正常路徑多一次往返)。它的價值是讓「哪個欄位重複」這件事在應用層就能判斷,不用依賴資料庫的索引名字 —— 等有第二個唯一約束時,這個差別會很明顯。
+    - 捕捉唯一約束違反例外: 這個在 Repository 層, 主要是防止 race condition 的問題, 有可能有競態
+
+    如果唯一索引不存在 → 資料庫不會拒絕 → 捕捉唯一約束違反例外的 catch 永遠不會觸發,重複資料直接寫進去
+    捕捉唯一約束違反例外不存在 → 資料庫照樣拒絕,只是變成 500
+    換句話說:第一層和第三層不是兩道獨立的防線。第三層是第一層的「翻譯器」 —— 把資料庫的 23505 翻譯成使用者看得懂的 409。
+
+    拿掉哪一層	    壞掉什麼
+    唯一索引	    正確性 —— 資料庫真的會有兩筆相同 email,而且另外兩層也跟著失效
+    應用層預檢	    幾乎沒有 —— 正常路徑反而變快,重複 email 走第三層照樣回 409
+    捕捉例外	    使用者體驗 —— 競態時 409 變成 500
+
+- DTO 設計:`RegisterRequest` 該有哪些欄位?**絕對不能有什麼?**(回去看 Day 11 的 over-posting)
+    `RegisterRequest` 該有 email 跟 password 欄位, 絕對不能有 id
+
+- 註冊成功該回什麼?要不要直接回 token?(兩種做法都有人用,想清楚差別)
+    註冊成功可以回成功查詢的路徑。可以直接回 token 就直接登入了
+
+
+**練習 3:登入與發 JWT**
+- **claims 要放什麼?** 至少需要能識別使用者的那個。查 `ClaimTypes.NameIdentifier` 跟 JWT 標準的 `sub` 有什麼關係(這裡有個 .NET 特有的坑)。
+    這邊是使用 JWT 所以必要放 `sub`
+    而 `ClaimTypes.NameIdentifier` 跟 `sub` 的關係
+    兩者是不同的名稱
+    ```csharp
+        ClaimTypes.NameIdentifier
+        實際值: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier
+
+        而
+        JwtRegisteredClaimNames.Sub
+        實際值: sub
+    ```
+    但是 JwtSecurityTokenHandler 預設有 Claim Mapping。
+    簡單來說就是驗證 JWT 後(使用預設 Mapping) 導致他會去找 ClaimTypes.NameIdentifier 而不是 JWT 的 sub
+    這是因為 ASP.NET Core 驗證 JWT 時,預設會把 sub 映射成 ClaimTypes.NameIdentifier
+    必須在 Program.cs 中新增
+    ```csharp
+        builder.Services
+        .AddAuthentication()
+        .AddJwtBearer(options =>
+        {
+            // 這邊告訴 ASP.NET Core: 驗證 JWT 時，不要自動將 JWT Claim 名稱轉換成 .NET 的 Claim 名稱
+            options.MapInboundClaims = false;
+        });
+    ```
+
+- 在 `Program.cs` 設定 `AddAuthentication().AddJwtBearer(...)`,把 `Issuer`、`Audience`、`IssuerSigningKey`、`ClockSkew` 都設明確。想一下 `ValidateIssuer` / `ValidateAudience` 各自在防什麼。
+    `ValidateIssuer`: 防止金鑰外流或被共用給別的簽發者之後, 擋掉非你簽發的 token
+    `ValidateAudience`: 防止為服務 A 簽的 token 被拿到服務 B 使用(兩個服務共用金鑰, A 的 token 在 B 也是合法簽章)
+
+- **登入失敗要回什麼?** 401 還是 400?而且訊息**不能說「密碼錯誤」或「帳號不存在」** —— 為什麼?
+    我覺得應該是要回傳 401 登入錯誤, 然後不能說密碼錯誤或帳號不存在是為了不讓攻擊者知道哪些 email 有註冊
+
+枚舉為什麼有價值?拿到一份「確認存在」的帳號清單之後,攻擊者可以:撒網釣魚、拿外洩密碼庫去撞庫、或單純確認某個人有用你的服務(隱私問題)。他完全不需要破解任何密碼。
+而這個混淆正是你 FakePassword 失敗的原因
+你當時說「只是為了讓他消耗駭客成本隨便要讓他跑一次 verify 浪費時間」—— 那是在追求成本。但真正的目標是不可區分。
+結果就是:那個明文假雜湊讓 verify 根本沒跑(所以沒浪費任何時間),還附帶一個 500(所以區分度更高了)。目標設錯,手段就偏了。
+
+
+**練習 4:保護端點**
+
+- 加 `app.UseAuthentication()` 和 `app.UseAuthorization()`。**順序很重要** —— 用 Day 11 學的那套(`Use` 之間有先後、`Map` 位置無關)推一下它們該放哪,以及為什麼 `UseAuthentication` 必須在 `UseAuthorization` 前面。
+`UseAuthentication`: 處理驗證, 成功填入 `HttpContext.User`, 失敗就不填然後繼續往下走
+`UseAuthorization`: 讀端點上的授權 metadata 並執行, 沒過就 401(未驗證)或 403(已驗證但沒資格)
+
+- 四種失敗情況各測一次,記下**狀態碼和回應格式**:
+四個狀態碼都是 401
+四個的 body 完全相同
+
+401 → 有 WWW-Authenticate
+403 → 沒有 WWW-Authenticate(RFC 9110:重試也沒用,不需要告訴你怎麼驗證)
+
+/*
+fetch("http://localhost:5020/todos", {
+    method: "GET",
+    headers: {
+        "Content-Type": "application/json",
+    },
+}).then(res => console.log(res.headers.get("www-authenticate")));
+他這是要取得回應 header 的 www-authenticate 回應
+*/
+
+  - 完全沒帶 token
+  Bearer
+
+  - token 格式錯(隨便一串字)
+  Bearer error="invalid_token"
+﻿
+  - 簽章對不上(把 key 改掉再驗)
+  Bearer error="invalid_token", error_description="The signature key was not found"
+
+  - token 過期(把 `exp` 設成 1 分鐘,等它過期)
+  Bearer error="invalid_token", error_description="The token expired at '11/19/2026 07:50:39'"
+
+- **401 跟 403 什麼時候各自出現?** 自己製造一次 403 看看。
+  401 就是在有 RequireAuthorization(); 的端點, 然後沒有正確的 token 時候會出現
+  403 則是使用 RequireAuthorization(p => p.RequireClaim("email", "test1@gmail.com")); // 這邊我沒有 role 所以使用 email 來去測試(再依照你真實所需要的 ClaimTypes 去做)
+
+
+- 這些 401 有進到你 Day 11 做的 ProblemDetails 格式嗎?**為什麼?**(提示:回去看「五種錯誤只有一種是例外」那張表)
+  有 —— 但這是因為我把 app.UseAuthorization() 明確寫在 UseStatusCodePages 的內層。
+  UseStatusCodePages 只檢查「往外走的回應」,所以它只補得到比它內層產生的狀態碼。我把那行註解掉時,WebApplication 會自動補一個 UseAuthorization,但位置在它外層 → 401 的 body 就是空的。

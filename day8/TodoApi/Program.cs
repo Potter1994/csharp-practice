@@ -1,7 +1,38 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+builder
+    .Services.AddAuthentication()
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true, // 是否驗證頒布者
+            ValidIssuer = builder.Configuration.GetValue<string>("Jwt:Issuer"),
+
+            ValidateAudience = true, // 是否驗證接收者
+            ValidAudience = builder.Configuration.GetValue<string>("Jwt:Audience"),
+
+            ValidateIssuerSigningKey = true, // 是否驗證簽名金鑰
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration.GetValue<string>("Jwt:Key") ?? "")
+            ),
+
+            ClockSkew = TimeSpan.FromSeconds(30), // 允許時間誤差
+            ValidateLifetime = true, // 驗證 Token 是否過期, 預設就是 true 但是寫出來看
+
+            // 搭配上面 options.MapInboundClaims 關掉 .NET 預設的 Claims Mapping 需要自己指向 jwt 設置的名字
+            // MapInboundClaims = false 之後要自己指定,不然會去找 ClaimTypes.* 的長 URI
+            // 選 email 是因為 Name 語意上是「可顯示的名字」;取 id 一律用 FindFirst("sub")
+            NameClaimType = JwtRegisteredClaimNames.Email,
+        };
+    });
+
 builder.Services.AddOpenApi();
 builder.Services.AddControllers(); // 試試用 Controller
 
@@ -17,6 +48,7 @@ builder.Services.AddScoped<ITodoRepository, EfTodoRepository>();
 // Day11 練習三新增 AddValidation() 讓 Minimal API 可以像 MVC 一樣進行 Data Annotations
 builder.Services.AddValidation();
 
+builder.Services.AddScoped<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserRepository, EfUserRepository>();
 
@@ -32,6 +64,8 @@ builder.Services.AddProblemDetails(options =>
         ctx.ProblemDetails.Detail ??= ctx.ProblemDetails.Status switch
         {
             400 => "The request could not be understand. Check the URL and request body.",
+            401 => "需要有效的驗證憑證,請重新登入",
+            403 => "權限不足",
             404 => "The requested resource was not found.",
             500 => "An unexcepted error occurred.",
             _ => null,
@@ -66,6 +100,14 @@ var app = builder.Build();
 
 app.UseExceptionHandler(); // 處理「丟出來的例外」 -> 500
 app.UseStatusCodePages(); // 處理「狀態碼是 4xx/5xx 但 body 空的」回應 (只有 body 是空的才會用喔)
+
+app.UseAuthentication(); // 處理驗證, 成功就填好 HttpContext.User, 失敗就不填然後繼續往下走
+app.UseAuthorization(); // 讀端點上的授權 metadata 並執行: 沒過就 401(未驗證)或 403(已驗證但不夠格)
+
+/*
+為什麼 `UseAuthentication` 必須在 `UseAuthorization` 前面。
+因為需要先驗證並填入 authentication 的資訊, 才能交給後續 authorization 來去做接受或拒絕
+*/
 
 /*
 五種錯誤,只有一種是例外

@@ -12,3 +12,5 @@ public record RegisterRequestDto(
     [Required] [EmailAddress] string Email,
     [Required] [StringLength(100, MinimumLength = 8)] string Password
 );
+
+public record LoginRequestDto([Required] [EmailAddress] string Email, [Required] string Password);
